@@ -6,10 +6,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from models.schemas import AnalyzeResponse, ExportRequest, Suggestion
+from models.schemas import AnalyzeResponse, ExportRequest, ResumeSection, Suggestion
 from services.openrouter_service import analyze_resume
 from services.pdf_generator import generate_pdf
 from services.pdf_parser import extract_text
+from services.resume_parser import parse_resume
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ async def analyze(
     resume: UploadFile = File(...),
     job_description: str = Form(...),
 ) -> AnalyzeResponse:
-    """Parse uploaded PDF resume and return AI improvement suggestions."""
+    """Parse uploaded PDF resume and return AI improvement suggestions plus structured data."""
     content = await resume.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds size limit")
@@ -43,14 +44,20 @@ async def analyze(
         temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="Could not extract text from PDF")
 
+    temp_path.unlink(missing_ok=True)
+
     try:
         result = analyze_resume(resume_text, job_description)
     except ValueError as exc:
-        temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
-        temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=502, detail="OpenRouter API request failed") from exc
+
+    try:
+        parsed_dict = parse_resume(resume_text)
+        parsed_resume = ResumeSection(**parsed_dict)
+    except Exception:
+        parsed_resume = ResumeSection()
 
     suggestions: list[Suggestion] = []
     for s in result.get("suggestions", []):
@@ -69,25 +76,20 @@ async def analyze(
         except ValidationError:
             continue
 
-    # Temp file is no longer needed — resume_text is carried in the response.
-    temp_path.unlink(missing_ok=True)
-
     return AnalyzeResponse(
         suggestions=suggestions,
         resume_text=resume_text,
         match_score=result.get("match_score", 0),
         temp_file_id=temp_file_id,
+        parsed_resume=parsed_resume,
     )
 
 
 @router.post("/export")
 async def export_resume(request: ExportRequest) -> Response:
-    """Apply accepted suggestions to resume_text and return a clean PDF."""
-    if not request.resume_text:
-        raise HTTPException(status_code=422, detail="resume_text is required")
-
+    """Render the structured resume data into a clean PDF."""
     try:
-        pdf_bytes = generate_pdf(request.resume_text, request.accepted_suggestions)
+        pdf_bytes = generate_pdf(request.parsed_resume)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="PDF generation failed") from exc
 

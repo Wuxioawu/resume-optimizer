@@ -1,188 +1,155 @@
 import io
-import re
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import (
+    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+)
 
-from models.schemas import Suggestion
+from models.schemas import ResumeSection
+
+# A4 usable width with 1-inch side margins
+_COL_LEFT = 4.15 * inch
+_COL_RIGHT = 2.12 * inch
 
 
-# ── Styles ──────────────────────────────────────────────────────────────────
-
-def _build_styles() -> dict[str, ParagraphStyle]:
+def _styles() -> dict[str, ParagraphStyle]:
     return {
         "name": ParagraphStyle(
-            "Name",
-            fontName="Helvetica-Bold",
-            fontSize=16,
-            leading=20,
-            alignment=TA_CENTER,
-            spaceAfter=3,
+            "Name", fontName="Helvetica-Bold", fontSize=18,
+            leading=22, alignment=TA_CENTER, spaceAfter=3,
         ),
         "contact": ParagraphStyle(
-            "Contact",
-            fontName="Helvetica",
-            fontSize=9,
-            leading=12,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor("#444444"),
-            spaceAfter=4,
+            "Contact", fontName="Helvetica", fontSize=9,
+            leading=12, alignment=TA_CENTER, spaceAfter=6,
+            textColor=colors.HexColor("#555555"),
         ),
-        "header": ParagraphStyle(
-            "Header",
-            fontName="Helvetica-Bold",
-            fontSize=11,
-            leading=14,
-            alignment=TA_LEFT,
-            spaceBefore=8,
-            spaceAfter=2,
+        "section": ParagraphStyle(
+            "Section", fontName="Helvetica-Bold", fontSize=11,
+            leading=14, alignment=TA_LEFT, spaceBefore=6, spaceAfter=2,
+        ),
+        "job_title": ParagraphStyle(
+            "JobTitle", fontName="Helvetica-Bold", fontSize=10,
+            leading=13, alignment=TA_LEFT,
+        ),
+        "company": ParagraphStyle(
+            "Company", fontName="Helvetica", fontSize=10,
+            leading=13, alignment=TA_LEFT,
+            textColor=colors.HexColor("#444444"),
+        ),
+        "date": ParagraphStyle(
+            "Date", fontName="Helvetica", fontSize=9,
+            leading=13, alignment=TA_RIGHT,
+            textColor=colors.HexColor("#555555"),
         ),
         "body": ParagraphStyle(
-            "Body",
-            fontName="Helvetica",
-            fontSize=10,
-            leading=14,
-            alignment=TA_LEFT,
-            spaceAfter=2,
+            "Body", fontName="Helvetica", fontSize=10,
+            leading=14, alignment=TA_LEFT, spaceAfter=2,
         ),
         "bullet": ParagraphStyle(
-            "Bullet",
-            fontName="Helvetica",
-            fontSize=10,
-            leading=14,
-            alignment=TA_LEFT,
-            leftIndent=14,
-            spaceAfter=2,
+            "Bullet", fontName="Helvetica", fontSize=10,
+            leading=14, alignment=TA_LEFT, leftIndent=14, spaceAfter=1,
         ),
     }
 
 
-# ── Resume text parser ───────────────────────────────────────────────────────
-
-def _is_contact_line(line: str, non_empty_index: int) -> bool:
-    """True for lines that look like contact info near the top of the document."""
-    if non_empty_index > 5:
-        return False
-    if "@" in line:
-        return True
-    if "|" in line or "·" in line:
-        return True
-    if re.search(r"\d{3}[-.\s]\d{3}[-.\s]\d{4}", line):
-        return True
-    if re.search(r"linkedin\.com|github\.com|portfolio", line, re.I):
-        return True
-    return False
+def _section_header(story: list, s: dict, label: str) -> None:
+    story.append(Paragraph(label.upper(), s["section"]))
+    story.append(HRFlowable(
+        width="100%", thickness=0.5, color=colors.black, spaceAfter=3,
+    ))
 
 
-def _is_section_header(line: str) -> bool:
-    """True for lines that are mostly uppercase and short (≤ 60 chars)."""
-    if not line or len(line) > 60:
-        return False
-    letters = [c for c in line if c.isalpha()]
-    if not letters:
-        return False
-    if sum(1 for c in letters if c.isupper()) / len(letters) >= 0.8:
-        return True
-    known = {
-        "experience", "education", "skills", "summary", "objective",
-        "certifications", "projects", "awards", "publications", "volunteer",
-        "languages", "interests", "references", "professional experience",
-        "work experience", "technical skills", "core competencies",
-        "achievements", "profile", "career objective",
-    }
-    return line.lower() in known
+def _two_col(left: Paragraph, right: Paragraph) -> Table:
+    """Single-row table: left-aligned left cell, right-aligned right cell."""
+    t = Table([[left, right]], colWidths=[_COL_LEFT, _COL_RIGHT])
+    t.setStyle(TableStyle([
+        ("ALIGN",        (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING",   (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 0),
+    ]))
+    return t
 
 
-def _parse_resume(text: str) -> list[dict[str, str]]:
-    """Convert raw resume text into a list of typed segments."""
-    segments: list[dict[str, str]] = []
-    non_empty_count = 0
-
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        if not stripped:
-            segments.append({"type": "space", "text": ""})
-            continue
-
-        non_empty_count += 1
-
-        if non_empty_count == 1:
-            segments.append({"type": "name", "text": stripped})
-        elif _is_contact_line(stripped, non_empty_count):
-            segments.append({"type": "contact", "text": stripped})
-        elif _is_section_header(stripped):
-            segments.append({"type": "header", "text": stripped})
-        elif re.match(r"^[•\-\*·–]\s*", stripped):
-            clean = re.sub(r"^[•\-\*·–]\s*", "", stripped)
-            segments.append({"type": "bullet", "text": clean})
-        else:
-            segments.append({"type": "body", "text": stripped})
-
-    return segments
-
-
-# ── Public API ───────────────────────────────────────────────────────────────
-
-def generate_pdf(resume_text: str, accepted_suggestions: list[Suggestion]) -> bytes:
-    """Apply accepted suggestions to resume_text, then render a clean PDF."""
-    # Step 1: apply suggestions via simple string replacement
-    updated = resume_text
-    for s in accepted_suggestions:
-        if s.original:
-            updated = updated.replace(s.original, s.suggested, 1)
-
-    print(f"[pdf_generator] suggestions applied : {len(accepted_suggestions)}")
-
-    # Step 2: parse into typed segments
-    segments = _parse_resume(updated)
-    styles = _build_styles()
-
-    # Step 3: build reportlab story
+def generate_pdf(parsed_resume: ResumeSection) -> bytes:
+    """Render a structured ResumeSection into a formatted A4 PDF."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=inch,
-        leftMargin=inch,
-        topMargin=inch,
-        bottomMargin=inch,
+        buffer, pagesize=A4,
+        rightMargin=inch, leftMargin=inch,
+        topMargin=inch, bottomMargin=inch,
     )
-
+    s = _styles()
     story: list = []
-    for seg in segments:
-        t = escape(seg["text"])
-        kind = seg["type"]
 
-        if kind == "name":
-            story.append(Paragraph(t, styles["name"]))
+    # ── Name ──
+    story.append(Paragraph(escape(parsed_resume.name or "Name"), s["name"]))
 
-        elif kind == "contact":
-            story.append(Paragraph(t, styles["contact"]))
+    # ── Contact ──
+    if parsed_resume.contact:
+        story.append(Paragraph(escape(parsed_resume.contact), s["contact"]))
 
-        elif kind == "header":
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(t.upper(), styles["header"]))
-            story.append(HRFlowable(
-                width="100%",
-                thickness=0.5,
-                color=colors.black,
-                spaceAfter=3,
+    # ── Summary ──
+    if parsed_resume.summary:
+        _section_header(story, s, "Summary")
+        story.append(Paragraph(escape(parsed_resume.summary), s["body"]))
+        story.append(Spacer(1, 4))
+
+    # ── Experience ──
+    if parsed_resume.experience:
+        _section_header(story, s, "Experience")
+        for exp in parsed_resume.experience:
+            story.append(_two_col(
+                Paragraph(escape(exp.title), s["job_title"]),
+                Paragraph(escape(exp.date), s["date"]),
             ))
+            story.append(_two_col(
+                Paragraph(escape(exp.company), s["company"]),
+                Paragraph(escape(exp.location), s["date"]),
+            ))
+            for b in exp.bullets:
+                story.append(Paragraph(f"• {escape(b)}", s["bullet"]))
+            story.append(Spacer(1, 5))
 
-        elif kind == "bullet":
-            story.append(Paragraph(f"• {t}", styles["bullet"]))
+    # ── Projects ──
+    if parsed_resume.projects:
+        _section_header(story, s, "Projects")
+        for proj in parsed_resume.projects:
+            story.append(_two_col(
+                Paragraph(escape(proj.name), s["job_title"]),
+                Paragraph(escape(proj.date), s["date"]),
+            ))
+            if proj.role:
+                story.append(Paragraph(escape(proj.role), s["company"]))
+            for b in proj.bullets:
+                story.append(Paragraph(f"• {escape(b)}", s["bullet"]))
+            story.append(Spacer(1, 5))
 
-        elif kind == "body":
-            story.append(Paragraph(t, styles["body"]))
-
-        elif kind == "space":
+    # ── Education ──
+    if parsed_resume.education:
+        _section_header(story, s, "Education")
+        for edu in parsed_resume.education:
+            story.append(_two_col(
+                Paragraph(escape(edu.school), s["job_title"]),
+                Paragraph(escape(edu.date), s["date"]),
+            ))
+            story.append(_two_col(
+                Paragraph(escape(edu.degree), s["company"]),
+                Paragraph(escape(edu.location), s["date"]),
+            ))
             story.append(Spacer(1, 4))
+
+    # ── Skills ──
+    if parsed_resume.skills:
+        _section_header(story, s, "Skills")
+        story.append(Paragraph(escape(parsed_resume.skills), s["body"]))
 
     doc.build(story)
     return buffer.getvalue()
