@@ -1,66 +1,188 @@
-import fitz
+import io
+import re
+from xml.sax.saxutils import escape
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+
 from models.schemas import Suggestion
 
 
-def _get_font_size(page: fitz.Page, original: str) -> float:
-    prefix = original[:20]
-    for block in page.get_text("dict")["blocks"]:
-        if "lines" not in block:
+# ── Styles ──────────────────────────────────────────────────────────────────
+
+def _build_styles() -> dict[str, ParagraphStyle]:
+    return {
+        "name": ParagraphStyle(
+            "Name",
+            fontName="Helvetica-Bold",
+            fontSize=16,
+            leading=20,
+            alignment=TA_CENTER,
+            spaceAfter=3,
+        ),
+        "contact": ParagraphStyle(
+            "Contact",
+            fontName="Helvetica",
+            fontSize=9,
+            leading=12,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#444444"),
+            spaceAfter=4,
+        ),
+        "header": ParagraphStyle(
+            "Header",
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            leading=14,
+            alignment=TA_LEFT,
+            spaceBefore=8,
+            spaceAfter=2,
+        ),
+        "body": ParagraphStyle(
+            "Body",
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            alignment=TA_LEFT,
+            spaceAfter=2,
+        ),
+        "bullet": ParagraphStyle(
+            "Bullet",
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            alignment=TA_LEFT,
+            leftIndent=14,
+            spaceAfter=2,
+        ),
+    }
+
+
+# ── Resume text parser ───────────────────────────────────────────────────────
+
+def _is_contact_line(line: str, non_empty_index: int) -> bool:
+    """True for lines that look like contact info near the top of the document."""
+    if non_empty_index > 5:
+        return False
+    if "@" in line:
+        return True
+    if "|" in line or "·" in line:
+        return True
+    if re.search(r"\d{3}[-.\s]\d{3}[-.\s]\d{4}", line):
+        return True
+    if re.search(r"linkedin\.com|github\.com|portfolio", line, re.I):
+        return True
+    return False
+
+
+def _is_section_header(line: str) -> bool:
+    """True for lines that are mostly uppercase and short (≤ 60 chars)."""
+    if not line or len(line) > 60:
+        return False
+    letters = [c for c in line if c.isalpha()]
+    if not letters:
+        return False
+    if sum(1 for c in letters if c.isupper()) / len(letters) >= 0.8:
+        return True
+    known = {
+        "experience", "education", "skills", "summary", "objective",
+        "certifications", "projects", "awards", "publications", "volunteer",
+        "languages", "interests", "references", "professional experience",
+        "work experience", "technical skills", "core competencies",
+        "achievements", "profile", "career objective",
+    }
+    return line.lower() in known
+
+
+def _parse_resume(text: str) -> list[dict[str, str]]:
+    """Convert raw resume text into a list of typed segments."""
+    segments: list[dict[str, str]] = []
+    non_empty_count = 0
+
+    for line in text.splitlines():
+        stripped = line.strip()
+
+        if not stripped:
+            segments.append({"type": "space", "text": ""})
             continue
-        for line in block["lines"]:
-            for span in line["spans"]:
-                if prefix in span["text"]:
-                    return float(span["size"])
-    return 10.0
+
+        non_empty_count += 1
+
+        if non_empty_count == 1:
+            segments.append({"type": "name", "text": stripped})
+        elif _is_contact_line(stripped, non_empty_count):
+            segments.append({"type": "contact", "text": stripped})
+        elif _is_section_header(stripped):
+            segments.append({"type": "header", "text": stripped})
+        elif re.match(r"^[•\-\*·–]\s*", stripped):
+            clean = re.sub(r"^[•\-\*·–]\s*", "", stripped)
+            segments.append({"type": "bullet", "text": clean})
+        else:
+            segments.append({"type": "body", "text": stripped})
+
+    return segments
 
 
-def generate_pdf(temp_file_id: str, accepted_suggestions: list[Suggestion]) -> bytes:
-    doc = fitz.open(f"/tmp/{temp_file_id}.pdf")
+# ── Public API ───────────────────────────────────────────────────────────────
 
-    total_replacements = 0
+def generate_pdf(resume_text: str, accepted_suggestions: list[Suggestion]) -> bytes:
+    """Apply accepted suggestions to resume_text, then render a clean PDF."""
+    # Step 1: apply suggestions via simple string replacement
+    updated = resume_text
+    for s in accepted_suggestions:
+        if s.original:
+            updated = updated.replace(s.original, s.suggested, 1)
 
-    for page_num, page in enumerate(doc):
-        # 打印页面所有文字，方便调试
-        page_text = page.get_text()
-        print(f"\n=== Page {page_num + 1} text (first 200 chars) ===")
-        print(page_text[:200])
+    print(f"[pdf_generator] suggestions applied : {len(accepted_suggestions)}")
 
-        replacements: list[tuple[fitz.Rect, str, float]] = []
+    # Step 2: parse into typed segments
+    segments = _parse_resume(updated)
+    styles = _build_styles()
 
-        for suggestion in accepted_suggestions:
-            print(f"\n🔍 Searching for: '{suggestion.original[:50]}'")
+    # Step 3: build reportlab story
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=inch,
+        leftMargin=inch,
+        topMargin=inch,
+        bottomMargin=inch,
+    )
 
-            # 方法1：直接搜索
-            instances = page.search_for(suggestion.original)
-            print(f"   Direct search found: {len(instances)} instances")
+    story: list = []
+    for seg in segments:
+        t = escape(seg["text"])
+        kind = seg["type"]
 
-            # 方法2：搜索前20个字符
-            if not instances:
-                short = suggestion.original[:30]
-                instances = page.search_for(short)
-                print(f"   Short search (30 chars) found: {len(instances)} instances")
+        if kind == "name":
+            story.append(Paragraph(t, styles["name"]))
 
-            if not instances:
-                print(f"   ❌ NOT FOUND on this page")
-                continue
+        elif kind == "contact":
+            story.append(Paragraph(t, styles["contact"]))
 
-            font_size = _get_font_size(page, suggestion.original)
-            print(f"   ✅ Found {len(instances)} instances, font size: {font_size}")
+        elif kind == "header":
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(t.upper(), styles["header"]))
+            story.append(HRFlowable(
+                width="100%",
+                thickness=0.5,
+                color=colors.black,
+                spaceAfter=3,
+            ))
 
-            for rect in instances:
-                replacements.append((rect, suggestion.suggested, font_size))
-                page.add_redact_annot(rect, fill=(1, 1, 1))
-                total_replacements += 1
+        elif kind == "bullet":
+            story.append(Paragraph(f"• {t}", styles["bullet"]))
 
-        page.apply_redactions()
+        elif kind == "body":
+            story.append(Paragraph(t, styles["body"]))
 
-        for rect, suggested_text, font_size in replacements:
-            page.insert_text(
-                (rect.x0, rect.y1),
-                suggested_text,
-                fontsize=font_size,
-                color=(0, 0, 0),
-            )
+        elif kind == "space":
+            story.append(Spacer(1, 4))
 
-    print(f"\n✅ Total replacements made: {total_replacements}")
-    return doc.tobytes()
+    doc.build(story)
+    return buffer.getvalue()

@@ -4,13 +4,13 @@
 
 /* ── Base ──────────────────────────────────────── */
 body {
-  background-color: #050508;
-  color: #f8fafc;
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 /* ── Gradient text ─────────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, #a78bfa 0%, #f8fafc 60%);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -23,15 +23,16 @@ body {
   gap: 6px;
   padding: 6px 14px;
   border-radius: 9999px;
-  border: 1px solid #1e1e30;
-  background: #12121e;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
   font-size: 13px;
-  color: #a78bfa;
+  color: #6366f1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .feature-badge:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.07), 0 1px 3px rgba(0,0,0,0.06);
 }
 
 /* ── Card glow ─────────────────────────────────── */
@@ -39,8 +40,8 @@ body {
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 .card-glow:hover {
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: 0 0 40px rgba(99, 102, 241, 0.07);
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 24px rgba(99, 102, 241, 0.08), 0 1px 3px rgba(0,0,0,0.06);
 }
 
 /* ── Score ring ────────────────────────────────── */
@@ -63,7 +64,7 @@ body {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.13),
+    rgba(255, 255, 255, 0.22),
     transparent
   );
   transform: skewX(-15deg);
@@ -108,11 +109,11 @@ body {
 /* ── Bot pulse glow ────────────────────────────── */
 @keyframes pulse-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.45));
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.3));
     transform: scale(1);
   }
   50% {
-    filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.75));
+    filter: drop-shadow(0 0 14px rgba(99, 102, 241, 0.55));
     transform: scale(1.06);
   }
 }
@@ -126,18 +127,19 @@ body {
     box-shadow 0.2s ease;
 }
 .suggestion-card:hover {
-  box-shadow: 0 2px 24px rgba(99, 102, 241, 0.07);
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 16px rgba(99, 102, 241, 0.08);
 }
 
 /* ── Custom scrollbar ──────────────────────────── */
 .styled-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #1e1e30 transparent;
+  scrollbar-color: #cbd5e1 transparent;
 }
 .styled-scroll::-webkit-scrollbar { width: 4px; }
 .styled-scroll::-webkit-scrollbar-track { background: transparent; }
 .styled-scroll::-webkit-scrollbar-thumb {
-  background: #1e1e30;
+  background: #cbd5e1;
   border-radius: 2px;
 }
 .styled-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }

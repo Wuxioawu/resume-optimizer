@@ -21,4 +21,5 @@ class AnalyzeResponse(BaseModel):
 
 class ExportRequest(BaseModel):
     temp_file_id: str
+    resume_text: str = ""
     accepted_suggestions: list[Suggestion]

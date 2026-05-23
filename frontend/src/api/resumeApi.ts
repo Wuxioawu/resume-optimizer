@@ -19,11 +19,16 @@ export async function analyzeResume(
 
 export async function exportResume(
   tempFileId: string,
+  resumeText: string,
   acceptedSuggestions: Suggestion[]
 ): Promise<Blob> {
   const { data } = await axios.post(
     `${BASE_URL}/api/export`,
-    { temp_file_id: tempFileId, accepted_suggestions: acceptedSuggestions },
+    {
+      temp_file_id: tempFileId,
+      resume_text: resumeText,
+      accepted_suggestions: acceptedSuggestions,
+    },
     { responseType: "blob" }
   )
   return data
