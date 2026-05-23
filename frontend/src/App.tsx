@@ -9,7 +9,7 @@ import {
 } from "lucide-react"
 import { analyzeResume, exportResume } from "./api/resumeApi"
 import type {
-  Suggestion, ResumeSection, ExperienceEntry, ProjectEntry, EducationEntry,
+  Suggestion, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry,
 } from "./types"
 
 type AppState = "idle" | "loading" | "results" | "exporting"
@@ -39,7 +39,7 @@ const EDITOR_TABS: { id: EditorTab; label: string; icon: LucideIcon }[] = [
   { id: "skills",     label: "Skills",     icon: Wrench },
 ]
 
-function applyText(r: ResumeSection, section: string, orig: string, sugg: string): ResumeSection {
+function applyText(r: ResumeData, section: string, orig: string, sugg: string): ResumeData {
   const sub = (s: string) => s.includes(orig) ? s.replace(orig, sugg) : s
   switch (section) {
     case "Summary":    return { ...r, summary: sub(r.summary) }
@@ -61,7 +61,7 @@ function applyText(r: ResumeSection, section: string, orig: string, sugg: string
   }
 }
 
-function ResumePreview({ resume }: { resume: ResumeSection }) {
+function ResumePreview({ resume }: { resume: ResumeData }) {
   const SectionHead = ({ label }: { label: string }) => (
     <div className="mt-3 mb-1">
       <p className="text-[9px] font-bold uppercase tracking-widest">{label}</p>
@@ -123,7 +123,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [jobDescription, setJobDescription] = useState("")
-  const [parsedResume, setParsedResume] = useState<ResumeSection | null>(null)
+  const [parsedResume, setParsedResume] = useState<ResumeData | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [activeTab, setActiveTab] = useState<EditorTab>("personal")
   const [matchScore, setMatchScore] = useState(0)
@@ -195,7 +195,8 @@ function App() {
     setState("exporting")
     setError(null)
     try {
-      const blob = await exportResume(parsedResume)
+      const accepted = suggestions.filter(s => s.accepted)
+      const blob = await exportResume(parsedResume, accepted)
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url; a.download = "optimized_resume.pdf"; a.click()
@@ -214,7 +215,7 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const setResume = (updater: (r: ResumeSection) => ResumeSection) =>
+  const setResume = (updater: (r: ResumeData) => ResumeData) =>
     setParsedResume(prev => prev ? updater(prev) : prev)
 
   const updateExp = (i: number, updates: Partial<ExperienceEntry>) =>

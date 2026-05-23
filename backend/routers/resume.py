@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from models.schemas import AnalyzeResponse, ExportRequest, ResumeSection, Suggestion
+from models.schemas import AnalyzeResponse, ExportRequest, ResumeData, Suggestion
 from services.openrouter_service import analyze_resume
 from services.pdf_generator import generate_pdf
 from services.pdf_parser import extract_text
@@ -55,9 +55,9 @@ async def analyze(
 
     try:
         parsed_dict = parse_resume(resume_text)
-        parsed_resume = ResumeSection(**parsed_dict)
+        parsed_resume = ResumeData(**parsed_dict)
     except Exception:
-        parsed_resume = ResumeSection()
+        parsed_resume = ResumeData()
 
     suggestions: list[Suggestion] = []
     for s in result.get("suggestions", []):
@@ -87,9 +87,10 @@ async def analyze(
 
 @router.post("/export")
 async def export_resume(request: ExportRequest) -> Response:
-    """Render the structured resume data into a clean PDF."""
+    """Apply accepted suggestions to structured resume data and return a clean PDF."""
     try:
-        pdf_bytes = generate_pdf(request.parsed_resume)
+        accepted = [s for s in request.accepted_suggestions if s.accepted]
+        pdf_bytes = generate_pdf(request.parsed_resume.model_dump(), accepted)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="PDF generation failed") from exc
 

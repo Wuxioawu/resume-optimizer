@@ -34,13 +34,13 @@ class EducationEntry(BaseModel):
     location: str = ""
 
 
-class ResumeSection(BaseModel):
+class ResumeData(BaseModel):
     name: str = ""
     contact: str = ""
     summary: str = ""
-    experience: list[ExperienceEntry] = []
-    projects: list[ProjectEntry] = []
-    education: list[EducationEntry] = []
+    experience: list[dict] = []
+    projects: list[dict] = []
+    education: list[dict] = []
     skills: str = ""
 
 
@@ -49,8 +49,9 @@ class AnalyzeResponse(BaseModel):
     resume_text: str
     match_score: int
     temp_file_id: str
-    parsed_resume: ResumeSection
+    parsed_resume: ResumeData
 
 
 class ExportRequest(BaseModel):
-    parsed_resume: ResumeSection
+    parsed_resume: ResumeData
+    accepted_suggestions: list[Suggestion] = []

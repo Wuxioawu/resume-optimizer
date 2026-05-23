@@ -13,57 +13,55 @@ MODELS = [
 
 
 def parse_resume(resume_text: str) -> dict:
-    """Call OpenRouter to convert raw resume text into a structured JSON object."""
+    """Use AI to parse resume text into structured sections."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY environment variable is not set")
 
-    prompt = f"""Parse the following resume text into a structured JSON object.
+    prompt = f"""Parse this resume text into a structured JSON object.
 
-Return ONLY valid JSON — no extra text, no markdown code fences.
-Use exactly this structure:
-
+Return ONLY valid JSON with this exact structure:
 {{
   "name": "Full Name",
-  "contact": "email | phone | city, state | linkedin",
-  "summary": "Professional summary paragraph, or empty string if none",
+  "contact": "City | email | phone | LinkedIn | GitHub",
+  "summary": "Summary paragraph text",
   "experience": [
     {{
       "company": "Company Name",
       "title": "Job Title",
-      "date": "Jan 2020 – Dec 2022",
-      "location": "City, State",
+      "date": "Aug 2022 - Aug 2025",
+      "location": "Beijing, China",
       "bullets": [
-        "First achievement or responsibility",
-        "Second achievement"
+        "First bullet point",
+        "Second bullet point"
       ]
     }}
   ],
   "projects": [
     {{
       "name": "Project Name",
-      "role": "Role or tech stack description",
-      "date": "2023",
+      "role": "Full Stack Developer",
       "bullets": [
-        "What the project does or achieved"
+        "First bullet point"
       ]
     }}
   ],
   "education": [
     {{
       "school": "University Name",
-      "degree": "Degree and Field of Study",
-      "date": "May 2021",
-      "location": "City, State"
+      "degree": "Degree Name",
+      "date": "Sep 2025 - Jun 2026",
+      "location": "Dublin, Ireland"
     }}
   ],
-  "skills": "Skill1, Skill2, Skill3 — or comma-separated categories"
+  "skills": "Languages: Java, Python\\nFrameworks: Spring Boot, React"
 }}
 
 Rules:
 - Preserve the exact wording from the original resume
 - If a section is absent, use an empty list [] or empty string ""
 - Each bullet point should be a single string (no nested lists)
+- For skills, group by category separated by newlines (e.g. "Languages: Java, Python\\nFrameworks: React")
 - Do not invent or fabricate any content
 
 Resume text:

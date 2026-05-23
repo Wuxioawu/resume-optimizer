@@ -30,7 +30,7 @@ export interface EducationEntry {
   location: string
 }
 
-export interface ResumeSection {
+export interface ResumeData {
   name: string
   contact: string
   summary: string
@@ -45,5 +45,5 @@ export interface AnalyzeResponse {
   resume_text: string
   match_score: number
   temp_file_id: string
-  parsed_resume: ResumeSection
+  parsed_resume: ResumeData
 }
