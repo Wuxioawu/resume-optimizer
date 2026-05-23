@@ -1,3 +1,143 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Base ──────────────────────────────────────── */
+body {
+  background-color: #050508;
+  color: #f8fafc;
+}
+
+/* ── Gradient text ─────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #f8fafc 60%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Feature badges ────────────────────────────── */
+.feature-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #1e1e30;
+  background: #12121e;
+  font-size: 13px;
+  color: #a78bfa;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.feature-badge:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.12);
+}
+
+/* ── Card glow ─────────────────────────────────── */
+.card-glow {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.card-glow:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: 0 0 40px rgba(99, 102, 241, 0.07);
+}
+
+/* ── Score ring ────────────────────────────────── */
+.score-ring {
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Shimmer button ────────────────────────────── */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -70%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.13),
+    transparent
+  );
+  transform: skewX(-15deg);
+  pointer-events: none;
+}
+.btn-shimmer:not(:disabled):hover::after {
+  animation: shimmer 0.55s ease;
+}
+
+@keyframes shimmer {
+  from { left: -70%; }
+  to   { left: 130%; }
+}
+
+/* ── Slide-in for suggestion cards ────────────── */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.slide-in {
+  opacity: 0;
+  animation: slide-in 0.35s ease forwards;
+}
+
+/* ── Accept button pop ─────────────────────────── */
+@keyframes pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.88); }
+  70%  { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.pop {
+  animation: pop 0.28s ease;
+}
+
+/* ── Bot pulse glow ────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.45));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.75));
+    transform: scale(1.06);
+  }
+}
+.pulse-glow {
+  animation: pulse-glow 2.6s ease-in-out infinite;
+}
+
+/* ── Suggestion card ───────────────────────────── */
+.suggestion-card {
+  transition: border-color 0.2s ease, background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.suggestion-card:hover {
+  box-shadow: 0 2px 24px rgba(99, 102, 241, 0.07);
+}
+
+/* ── Custom scrollbar ──────────────────────────── */
+.styled-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e30 transparent;
+}
+.styled-scroll::-webkit-scrollbar { width: 4px; }
+.styled-scroll::-webkit-scrollbar-track { background: transparent; }
+.styled-scroll::-webkit-scrollbar-thumb {
+  background: #1e1e30;
+  border-radius: 2px;
+}
+.styled-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }
