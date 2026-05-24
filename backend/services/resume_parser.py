@@ -4,10 +4,11 @@ import re
 import requests
 
 MODELS = [
-    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-20b:free",
+    "z-ai/glm-4.5-air:free",
+    "google/gemma-4-31b-it:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-4-26b-a4b-it:free",
     "minimax/minimax-m2.5:free",
 ]
 
@@ -59,46 +60,63 @@ Return ONLY valid JSON with this exact structure:
 
 Rules:
 - Preserve the exact wording from the original resume
-- If a section is absent, use an empty list [] or empty string ""
-- Each bullet point should be a single string (no nested lists)
-- For skills, group by category separated by newlines (e.g. "Languages: Java, Python\\nFrameworks: React")
+- If a section is absent use an empty list [] or empty string ""
+- Each bullet point should be a complete sentence string
+- For skills group by category separated by newlines
 - Do not invent or fabricate any content
+- Return ONLY JSON, no markdown, no extra text
+- IMPORTANT: Add proper spaces between all words in the output. Every word must be separated by a space. Do not copy joined words from the input - always add spaces.
 
 Resume text:
 {resume_text}"""
 
-    last_error = "No models available"
-    for model in MODELS:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=120,
-        )
+    errors = []
+    print(f"\n[resume_parser] Parsing resume into sections...")
+    print(f"[resume_parser] Resume length: {len(resume_text)} chars")
 
-        body = response.json()
+    for index, model in enumerate(MODELS):
+        print(f"[resume_parser] Attempt {index + 1}/{len(MODELS)}: {model}")
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=120,
+            )
 
-        if "choices" in body:
-            raw = body["choices"][0]["message"]["content"].strip()
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            try:
-                return json.loads(raw.strip())
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Model {model} returned non-JSON: {exc}") from exc
+            print(f"[resume_parser] HTTP status: {response.status_code}")
+            body = response.json()
 
-        error = body.get("error", {})
-        if isinstance(error, dict):
-            last_error = f"{model} error {error.get('code')}: {error.get('message', '')[:80]}"
-            continue
+            if "choices" in body:
+                raw = body["choices"][0]["message"]["content"].strip()
+                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+                result = json.loads(raw.strip())
+                print(f"[resume_parser] ✅ SUCCESS with {model}")
+                print(f"[resume_parser] Name: {result.get('name')}")
+                print(f"[resume_parser] Experience entries: {len(result.get('experience', []))}")
+                print(f"[resume_parser] Projects entries: {len(result.get('projects', []))}")
+                return result
 
-        last_error = f"{model} unknown error"
-        continue
+            error = body.get("error", {})
+            code = error.get("code") if isinstance(error, dict) else "unknown"
+            msg = str(error.get("message", ""))[:80] if isinstance(error, dict) else ""
+            print(f"[resume_parser] ❌ FAILED: code={code} msg={msg}")
+            errors.append(f"{model}: code={code}")
 
-    raise ValueError(f"All models failed. Last error: {last_error}")
+        except json.JSONDecodeError as exc:
+            print(f"[resume_parser] ❌ JSON parse error: {exc}")
+            errors.append(f"{model}: json error")
+
+        except Exception as e:
+            print(f"[resume_parser] ❌ Exception: {str(e)}")
+            errors.append(f"{model}: {str(e)}")
+
+    print(f"[resume_parser] ❌ ALL MODELS FAILED: {errors}")
+    raise ValueError(f"All models failed: {'; '.join(errors)}")

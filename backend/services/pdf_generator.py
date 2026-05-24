@@ -5,46 +5,64 @@ from html import escape as esc
 from weasyprint import HTML
 
 
-def fix_text_spacing(text: str) -> str:
-    """Fix PDF text extraction spacing issues (camelCase joins, missing spaces after punctuation, etc.)."""
+def _fix_spacing(text: str) -> str:
+    """Fix PDF extraction spacing without breaking technical terms."""
     if not text:
         return text
-    # Add space before capitals after lowercase: "softwareEngineer" -> "software Engineer"
+    # Only fix obvious joined words - lowercase followed by uppercase
+    # But NOT in known technical terms
+    KEEP_TOGETHER = [
+        'JavaScript', 'TypeScript', 'MySQL', 'PostgreSQL',
+        'MongoDB', 'GitHub', 'GitLab', 'DevOps', 'CI/CD',
+        'RESTful', 'SpringBoot', 'RabbitMQ', 'XXL-JOB',
+        'HyperOS', 'OkHttp', 'LinkedIn'
+    ]
+    # Replace known terms with placeholders
+    placeholders = {}
+    for i, term in enumerate(KEEP_TOGETHER):
+        placeholder = f"__TERM{i}__"
+        placeholders[placeholder] = term
+        text = text.replace(term, placeholder)
+
+    # Now safe to fix spacing
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-    # Add space after punctuation if missing: "hello,world" -> "hello, world"
-    text = re.sub(r'([,;:])([^\s\d])', r'\1 \2', text)
-    # Fix numbers joined to words: "3+years" -> "3+ years"
-    text = re.sub(r'(\d+\+)([a-zA-Z])', r'\1 \2', text)
+
+    # Restore placeholders
+    for placeholder, term in placeholders.items():
+        text = text.replace(placeholder, term)
+
+    # Fix numbers joined to words
+    text = re.sub(r'(\d)([A-Z][a-z])', r'\1 \2', text)
     # Clean multiple spaces
     text = re.sub(r' {2,}', ' ', text)
     return text.strip()
 
 
 def _apply_spacing_fixes(data: dict) -> dict:
-    """Apply fix_text_spacing to all text fields in the resume data dict."""
+    """Apply _fix_spacing to all text fields in the resume data dict."""
     data = copy.deepcopy(data)
-    data['name'] = fix_text_spacing(data.get('name', ''))
-    data['contact'] = fix_text_spacing(data.get('contact', ''))
-    data['summary'] = fix_text_spacing(data.get('summary', ''))
-    data['skills'] = fix_text_spacing(data.get('skills', ''))
+    data['name'] = _fix_spacing(data.get('name', ''))
+    data['contact'] = _fix_spacing(data.get('contact', ''))
+    data['summary'] = _fix_spacing(data.get('summary', ''))
+    data['skills'] = _fix_spacing(data.get('skills', ''))
 
     for exp in data.get('experience', []):
-        exp['company'] = fix_text_spacing(exp.get('company', ''))
-        exp['title'] = fix_text_spacing(exp.get('title', ''))
-        exp['location'] = fix_text_spacing(exp.get('location', ''))
-        exp['date'] = fix_text_spacing(exp.get('date', ''))
-        exp['bullets'] = [fix_text_spacing(b) for b in exp.get('bullets', [])]
+        exp['company'] = _fix_spacing(exp.get('company', ''))
+        exp['title'] = _fix_spacing(exp.get('title', ''))
+        exp['location'] = _fix_spacing(exp.get('location', ''))
+        exp['date'] = _fix_spacing(exp.get('date', ''))
+        exp['bullets'] = [_fix_spacing(b) for b in exp.get('bullets', []) if b.strip()]
 
     for proj in data.get('projects', []):
-        proj['name'] = fix_text_spacing(proj.get('name', ''))
-        proj['role'] = fix_text_spacing(proj.get('role', ''))
-        proj['bullets'] = [fix_text_spacing(b) for b in proj.get('bullets', [])]
+        proj['name'] = _fix_spacing(proj.get('name', ''))
+        proj['role'] = _fix_spacing(proj.get('role', ''))
+        proj['bullets'] = [_fix_spacing(b) for b in proj.get('bullets', []) if b.strip()]
 
     for edu in data.get('education', []):
-        edu['school'] = fix_text_spacing(edu.get('school', ''))
-        edu['degree'] = fix_text_spacing(edu.get('degree', ''))
-        edu['date'] = fix_text_spacing(edu.get('date', ''))
-        edu['location'] = fix_text_spacing(edu.get('location', ''))
+        edu['school'] = _fix_spacing(edu.get('school', ''))
+        edu['degree'] = _fix_spacing(edu.get('degree', ''))
+        edu['date'] = _fix_spacing(edu.get('date', ''))
+        edu['location'] = _fix_spacing(edu.get('location', ''))
 
     return data
 
@@ -82,8 +100,17 @@ def _apply_suggestions(data: dict, suggestions: list) -> dict:
 def build_resume_html(data: dict) -> str:
     """Build a professional HTML resume from structured resume data."""
 
+    # Deduplicate: remove summary text from experience bullets if it appears there
+    summary_text = data.get('summary', '').strip()
+    if summary_text:
+        for exp in data.get('experience', []):
+            exp['bullets'] = [
+                b for b in exp.get('bullets', [])
+                if b.strip() and b.strip() != summary_text
+            ]
+
     def bullets_html(items: list) -> str:
-        filtered = [b for b in items if b.strip()]
+        filtered = [b.strip() for b in items if b.strip()]
         if not filtered:
             return ''
         return '<ul>' + ''.join(f'<li>{esc(b)}</li>' for b in filtered) + '</ul>'
