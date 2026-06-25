@@ -115,6 +115,15 @@ class AnalyzeResponse(BaseModel):
     parsed_resume: ResumeData
 
 
+class ResumeStyle(BaseModel):
+    accent_color: str = "#0f172a"
+    header_alignment: Literal["left", "center", "right"] = "center"
+    section_spacing: float = 8
+    entry_spacing: float = 6
+    line_spacing: float = 1.4
+
+
 class ExportRequest(BaseModel):
     parsed_resume: ResumeData
     accepted_suggestions: list[Suggestion] = []
+    style: ResumeStyle = ResumeStyle()

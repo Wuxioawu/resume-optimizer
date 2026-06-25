@@ -48,6 +48,14 @@ export interface ResumeData {
   skills: string
 }
 
+export interface ResumeStyle {
+  accentColor: string
+  headerAlignment: 'left' | 'center' | 'right'
+  sectionSpacing: number
+  entrySpacing: number
+  lineSpacing: number
+}
+
 export interface AnalyzeResponse {
   suggestions: Suggestion[]
   match_score: number

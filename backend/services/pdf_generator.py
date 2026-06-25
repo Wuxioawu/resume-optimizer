@@ -4,6 +4,8 @@ from html import escape as esc
 
 from weasyprint import HTML
 
+_HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{3,8}$')
+
 
 def _fix_spacing(text: str) -> str:
     """Fix PDF extraction spacing without breaking technical terms."""
@@ -68,8 +70,14 @@ def _apply_spacing_fixes(data: dict) -> dict:
 
 
 
-def build_resume_html(data: dict) -> str:
+def build_resume_html(data: dict, accent_color: str = "#0f172a", header_alignment: str = "center",
+                      section_spacing: float = 8, entry_spacing: float = 6, line_spacing: float = 1.4) -> str:
     """Build a professional HTML resume from structured resume data."""
+    safe_accent = accent_color if _HEX_COLOR.match(accent_color) else "#0f172a"
+    safe_align = header_alignment if header_alignment in ("left", "center", "right") else "center"
+    safe_section_spacing = max(4, min(24, float(section_spacing)))
+    safe_entry_spacing = max(2, min(16, float(entry_spacing)))
+    safe_line_spacing = max(1.0, min(2.0, float(line_spacing)))
 
     # Deduplicate: remove summary text from experience bullets if it appears there
     summary_text = data.get('summary', '').strip()
@@ -144,6 +152,14 @@ def build_resume_html(data: dict) -> str:
 <head>
 <meta charset="UTF-8">
 <style>
+  :root {{
+    --accent: {safe_accent};
+    --header-align: {safe_align};
+    --section-spacing: {safe_section_spacing}px;
+    --entry-spacing: {safe_entry_spacing}px;
+    --line-spacing: {safe_line_spacing};
+  }}
+
   @page {{
     size: A4;
     margin: 0.5in 0.6in;
@@ -160,13 +176,13 @@ def build_resume_html(data: dict) -> str:
   body {{
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 10pt;
-    line-height: 1.4;
+    line-height: var(--line-spacing);
     color: #000;
   }}
 
   /* ── Header ── */
   .header {{
-    text-align: center;
+    text-align: var(--header-align);
     margin-bottom: 10px;
   }}
   .header h1 {{
@@ -185,21 +201,22 @@ def build_resume_html(data: dict) -> str:
 
   /* ── Sections ── */
   .section {{
-    margin-top: 8px;
+    margin-top: var(--section-spacing);
   }}
   .section h2 {{
     font-size: 10.5pt;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    border-bottom: 1px solid #000;
+    color: var(--accent);
+    border-bottom: 1px solid var(--accent);
     padding-bottom: 1px;
     margin-bottom: 5px;
   }}
 
   /* ── Entries ── */
   .entry {{
-    margin-bottom: 6px;
+    margin-bottom: var(--entry-spacing);
   }}
 
   .row-header,
@@ -245,7 +262,7 @@ def build_resume_html(data: dict) -> str:
   li {{
     font-size: 9.5pt;
     margin-bottom: 2px;
-    line-height: 1.4;
+    line-height: var(--line-spacing);
     word-wrap: break-word;
     overflow-wrap: break-word;
     white-space: normal;
@@ -287,8 +304,10 @@ def build_resume_html(data: dict) -> str:
 </html>"""
 
 
-def generate_pdf(resume_data: dict) -> bytes:
+def generate_pdf(resume_data: dict, accent_color: str = "#0f172a", header_alignment: str = "center",
+                 section_spacing: float = 8, entry_spacing: float = 6, line_spacing: float = 1.4) -> bytes:
     """Generate PDF from structured resume data using WeasyPrint."""
     data = _apply_spacing_fixes(resume_data)
-    html_str = build_resume_html(data)
+    html_str = build_resume_html(data, accent_color=accent_color, header_alignment=header_alignment,
+                                 section_spacing=section_spacing, entry_spacing=entry_spacing, line_spacing=line_spacing)
     return HTML(string=html_str).write_pdf()

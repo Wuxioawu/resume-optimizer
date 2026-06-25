@@ -1,19 +1,22 @@
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import type { LucideIcon } from "lucide-react"
 import {
   Sparkles, FileText, Zap, Target, TrendingUp,
   Upload, CheckCircle, Briefcase, Loader2, Award, CheckSquare,
   CheckCheck, X, Download, Lightbulb, Flame, Minus, ArrowRight,
   Info, ThumbsUp, Heart, User, GraduationCap, FolderOpen,
-  Wrench, Plus, Trash2, Edit3,
+  Wrench, Plus, Trash2, Edit3, Palette,
 } from "lucide-react"
 import { analyzeResume, exportResume } from "./api/resumeApi"
 import type {
-  Suggestion, SuggestionLocation, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry,
+  Suggestion, SuggestionLocation, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry, ResumeStyle,
 } from "./types"
 
 type AppState = "idle" | "loading" | "results" | "exporting"
 type EditorTab = "personal" | "experience" | "projects" | "education" | "skills"
+type RightTab = "editor" | "suggestions" | "style"
+
+const DEFAULT_STYLE: ResumeStyle = { accentColor: "#0f172a", headerAlignment: "center", sectionSpacing: 8, entrySpacing: 6, lineSpacing: 1.4 }
 
 const CIRCUMFERENCE = 2 * Math.PI * 45
 
@@ -150,26 +153,31 @@ function writeFieldAt(r: ResumeData, loc: SuggestionLocation, value: string): Re
 
 // ── Preview component ─────────────────────────────────────────────────────────
 
-function ResumePreview({ resume }: { resume: ResumeData }) {
+function ResumePreview({ resume, style }: { resume: ResumeData; style: ResumeStyle }) {
   const SectionHead = ({ label }: { label: string }) => (
-    <div className="mt-3 mb-1">
-      <p className="text-[9px] font-bold uppercase tracking-widest">{label}</p>
-      <hr className="border-t border-[#0f172a]" />
+    <div className="mb-1" style={{ marginTop: 'var(--section-spacing)' }}>
+      <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>{label}</p>
+      <hr className="border-t" style={{ borderColor: 'var(--accent)' }} />
     </div>
   )
   return (
-    <div className="bg-white p-5 text-[#0f172a] font-sans min-h-full">
-      <p className="text-lg font-bold text-center">{resume.name || "Your Name"}</p>
-      {resume.contact && <p className="text-[9px] text-center text-[#555] mb-1">{resume.contact}</p>}
+    <div
+      className="bg-white p-5 text-[#0f172a] font-sans min-h-full"
+      style={{ '--accent': style.accentColor, '--header-align': style.headerAlignment, '--section-spacing': `${style.sectionSpacing}px`, '--entry-spacing': `${style.entrySpacing}px`, '--line-spacing': style.lineSpacing, lineHeight: 'var(--line-spacing)' } as React.CSSProperties}
+    >
+      <div style={{ textAlign: 'var(--header-align)' as React.CSSProperties['textAlign'] }}>
+        <p className="text-lg font-bold">{resume.name || "Your Name"}</p>
+        {resume.contact && <p className="text-[9px] text-[#555] mb-1">{resume.contact}</p>}
+      </div>
 
       {resume.summary && (
-        <><SectionHead label="Summary" /><p className="text-[9px] text-[#374151] leading-relaxed">{resume.summary}</p></>
+        <><SectionHead label="Summary" /><p className="text-[9px] text-[#374151]">{resume.summary}</p></>
       )}
 
       {resume.experience.length > 0 && (
         <><SectionHead label="Experience" />
         {resume.experience.map((exp, i) => (
-          <div key={i} className="mb-2">
+          <div key={i} style={{ marginBottom: 'var(--entry-spacing)' }}>
             <div className="flex justify-between"><span className="text-[9px] font-bold">{exp.title}</span><span className="text-[8px] text-[#555]">{exp.date}</span></div>
             <div className="flex justify-between"><span className="text-[9px] text-[#444]">{exp.company}</span><span className="text-[8px] text-[#555]">{exp.location}</span></div>
             {exp.bullets.map((b, j) => <p key={j} className="text-[8px] text-[#374151] pl-2">• {b}</p>)}
@@ -180,7 +188,7 @@ function ResumePreview({ resume }: { resume: ResumeData }) {
       {resume.projects.length > 0 && (
         <><SectionHead label="Projects" />
         {resume.projects.map((proj, i) => (
-          <div key={i} className="mb-2">
+          <div key={i} style={{ marginBottom: 'var(--entry-spacing)' }}>
             <div className="flex justify-between"><span className="text-[9px] font-bold">{proj.name}</span><span className="text-[8px] text-[#555]">{proj.date}</span></div>
             {proj.role && <p className="text-[8px] text-[#444] italic">{proj.role}</p>}
             {proj.bullets.map((b, j) => <p key={j} className="text-[8px] text-[#374151] pl-2">• {b}</p>)}
@@ -191,7 +199,7 @@ function ResumePreview({ resume }: { resume: ResumeData }) {
       {resume.education.length > 0 && (
         <><SectionHead label="Education" />
         {resume.education.map((edu, i) => (
-          <div key={i} className="mb-1.5">
+          <div key={i} style={{ marginBottom: 'var(--entry-spacing)' }}>
             <div className="flex justify-between"><span className="text-[9px] font-bold">{edu.school}</span><span className="text-[8px] text-[#555]">{edu.date}</span></div>
             <div className="flex justify-between"><span className="text-[9px] text-[#444]">{edu.degree}</span><span className="text-[8px] text-[#555]">{edu.location}</span></div>
           </div>
@@ -207,6 +215,191 @@ function ResumePreview({ resume }: { resume: ResumeData }) {
 
 const inputCls = "w-full bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-3 py-1.5 text-xs text-[#0f172a] placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1]/50 focus:ring-1 focus:ring-[#6366f1]/15 transition-all"
 
+// ── Resizable split ───────────────────────────────────────────────────────────
+
+const SPLIT_KEY = "resume-split-px"
+const MIN_LEFT_PX = 360
+const MIN_RIGHT_PX = 380
+
+// ── EditorPanel ───────────────────────────────────────────────────────────────
+
+interface EditorPanelProps {
+  resume: ResumeData
+  setResume: (updater: (r: ResumeData) => ResumeData) => void
+}
+
+function EditorPanel({ resume, setResume }: EditorPanelProps) {
+  const [activeTab, setActiveTab] = useState<EditorTab>("personal")
+
+  const updateExp = (i: number, updates: Partial<ExperienceEntry>) =>
+    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, ...updates } : e) }))
+
+  const setExpBullet = (ei: number, bi: number, val: string) =>
+    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.map((b, j) => j === bi ? val : b) } : e) }))
+
+  const addExpBullet = (i: number) =>
+    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, bullets: [...e.bullets, ""] } : e) }))
+
+  const removeExpBullet = (ei: number, bi: number) =>
+    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.filter((_, j) => j !== bi) } : e) }))
+
+  const addExp = () =>
+    setResume(r => ({ ...r, experience: [...r.experience, { company: "", title: "", date: "", location: "", bullets: [] }] }))
+
+  const removeExp = (i: number) =>
+    setResume(r => ({ ...r, experience: r.experience.filter((_, j) => j !== i) }))
+
+  const updateProj = (i: number, updates: Partial<ProjectEntry>) =>
+    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, ...updates } : p) }))
+
+  const setProjBullet = (pi: number, bi: number, val: string) =>
+    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.map((b, j) => j === bi ? val : b) } : p) }))
+
+  const addProjBullet = (i: number) =>
+    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, bullets: [...p.bullets, ""] } : p) }))
+
+  const removeProjBullet = (pi: number, bi: number) =>
+    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.filter((_, j) => j !== bi) } : p) }))
+
+  const addProj = () =>
+    setResume(r => ({ ...r, projects: [...r.projects, { name: "", role: "", date: "", bullets: [] }] }))
+
+  const removeProj = (i: number) =>
+    setResume(r => ({ ...r, projects: r.projects.filter((_, j) => j !== i) }))
+
+  const updateEdu = (i: number, updates: Partial<EducationEntry>) =>
+    setResume(r => ({ ...r, education: r.education.map((e, j) => j === i ? { ...e, ...updates } : e) }))
+
+  const addEdu = () =>
+    setResume(r => ({ ...r, education: [...r.education, { school: "", degree: "", date: "", location: "" }] }))
+
+  const removeEdu = (i: number) =>
+    setResume(r => ({ ...r, education: r.education.filter((_, j) => j !== i) }))
+
+  return (
+    <>
+      <div className="flex gap-0.5 bg-[#f1f5f9] rounded-xl p-1 mb-2 flex-shrink-0">
+        {EDITOR_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[9px] font-medium transition-all ${activeTab === tab.id ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
+          >
+            <tab.icon size={11} />{tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "personal" && (
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Full Name</label>
+            <input value={resume.name} onChange={e => setResume(r => ({ ...r, name: e.target.value }))} className={inputCls} placeholder="Full Name" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Contact</label>
+            <input value={resume.contact} onChange={e => setResume(r => ({ ...r, contact: e.target.value }))} className={inputCls} placeholder="email | phone | city, state" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Summary</label>
+            <textarea value={resume.summary} onChange={e => setResume(r => ({ ...r, summary: e.target.value }))} rows={7} className={`${inputCls} resize-none`} placeholder="Professional summary…" />
+          </div>
+        </div>
+      )}
+
+      {activeTab === "experience" && (
+        <div className="flex flex-col gap-3">
+          {resume.experience.map((exp, i) => (
+            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
+              <button onClick={() => removeExp(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Title</label><input value={exp.title} onChange={e => updateExp(i, { title: e.target.value })} className={inputCls} placeholder="Job Title" /></div>
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Company</label><input value={exp.company} onChange={e => updateExp(i, { company: e.target.value })} className={inputCls} placeholder="Company" /></div>
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={exp.date} onChange={e => updateExp(i, { date: e.target.value })} className={inputCls} placeholder="Jan 2020 – Dec 2022" /></div>
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={exp.location} onChange={e => updateExp(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
+              </div>
+              <div>
+                <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
+                {exp.bullets.map((b, bi) => (
+                  <div key={bi} className="flex gap-1 mb-1">
+                    <input value={b} onChange={e => setExpBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="Achievement…" />
+                    <button onClick={() => removeExpBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
+                  </div>
+                ))}
+                <button onClick={() => addExpBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
+              </div>
+            </div>
+          ))}
+          <button onClick={addExp} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
+            <Plus size={12} />Add Experience
+          </button>
+        </div>
+      )}
+
+      {activeTab === "projects" && (
+        <div className="flex flex-col gap-3">
+          {resume.projects.map((proj, i) => (
+            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
+              <button onClick={() => removeProj(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Name</label><input value={proj.name} onChange={e => updateProj(i, { name: e.target.value })} className={inputCls} placeholder="Project Name" /></div>
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={proj.date} onChange={e => updateProj(i, { date: e.target.value })} className={inputCls} placeholder="2023" /></div>
+              </div>
+              <div><label className="block text-[9px] text-[#64748b] mb-0.5">Role / Tech Stack</label><input value={proj.role} onChange={e => updateProj(i, { role: e.target.value })} className={inputCls} placeholder="React, Node.js…" /></div>
+              <div>
+                <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
+                {proj.bullets.map((b, bi) => (
+                  <div key={bi} className="flex gap-1 mb-1">
+                    <input value={b} onChange={e => setProjBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="What it does…" />
+                    <button onClick={() => removeProjBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
+                  </div>
+                ))}
+                <button onClick={() => addProjBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
+              </div>
+            </div>
+          ))}
+          <button onClick={addProj} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
+            <Plus size={12} />Add Project
+          </button>
+        </div>
+      )}
+
+      {activeTab === "education" && (
+        <div className="flex flex-col gap-3">
+          {resume.education.map((edu, i) => (
+            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
+              <button onClick={() => removeEdu(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
+              <div><label className="block text-[9px] text-[#64748b] mb-0.5">School</label><input value={edu.school} onChange={e => updateEdu(i, { school: e.target.value })} className={inputCls} placeholder="University Name" /></div>
+              <div><label className="block text-[9px] text-[#64748b] mb-0.5">Degree</label><input value={edu.degree} onChange={e => updateEdu(i, { degree: e.target.value })} className={inputCls} placeholder="BS Computer Science" /></div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={edu.date} onChange={e => updateEdu(i, { date: e.target.value })} className={inputCls} placeholder="May 2021" /></div>
+                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={edu.location} onChange={e => updateEdu(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
+              </div>
+            </div>
+          ))}
+          <button onClick={addEdu} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
+            <Plus size={12} />Add Education
+          </button>
+        </div>
+      )}
+
+      {activeTab === "skills" && (
+        <div>
+          <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Skills</label>
+          <textarea
+            value={resume.skills}
+            onChange={e => setResume(r => ({ ...r, skills: e.target.value }))}
+            rows={12}
+            className={`${inputCls} resize-none`}
+            placeholder="Python, React, AWS, Docker — or comma-separated categories"
+          />
+          <p className="text-[10px] text-[#94a3b8] mt-1">Separate skills with commas, or group by category</p>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -220,11 +413,42 @@ function App() {
   const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set())
   // Snapshots the field value at the moment each suggestion was accepted, enabling exact restore on reject
   const [priorValues, setPriorValues] = useState<Map<string, string>>(new Map())
-  const [activeTab, setActiveTab] = useState<EditorTab>("personal")
+  const [rightTab, setRightTab] = useState<RightTab>("suggestions")
+  const [resumeStyle, setResumeStyle] = useState<ResumeStyle>(DEFAULT_STYLE)
   const [matchScore, setMatchScore] = useState(0)
   const [displayScore, setDisplayScore] = useState(0)
   const [poppingId, setPoppingId] = useState<string | null>(null)
+  const [leftPx, setLeftPx] = useState<number>(() => {
+    const stored = localStorage.getItem(SPLIT_KEY)
+    return stored ? Math.max(MIN_LEFT_PX, Number(stored)) : 600
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+
+  const handleDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const container = splitContainerRef.current
+    if (!container) return
+    const startX = e.clientX
+    const startLeft = leftPx
+    let lastLeft = startLeft
+    document.body.style.userSelect = "none"
+    document.body.style.cursor = "col-resize"
+    const onMove = (ev: MouseEvent) => {
+      const max = container.offsetWidth - MIN_RIGHT_PX - 8
+      lastLeft = Math.min(max, Math.max(MIN_LEFT_PX, startLeft + ev.clientX - startX))
+      setLeftPx(lastLeft)
+    }
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove)
+      document.removeEventListener("mouseup", onUp)
+      document.body.style.userSelect = ""
+      document.body.style.cursor = ""
+      localStorage.setItem(SPLIT_KEY, String(lastLeft))
+    }
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", onUp)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDisplayScore(matchScore), 120)
@@ -399,7 +623,7 @@ function App() {
     try {
       // parsedResume already reflects all accepted suggestions and manual edits.
       // Backend renders it as-is — no re-application.
-      const blob = await exportResume(parsedResume)
+      const blob = await exportResume(parsedResume, resumeStyle)
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url; a.download = "optimized_resume.pdf"; a.click()
@@ -419,55 +643,10 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  // ── Editor helpers ──────────────────────────────────────────────────────────
+  // ── Editor helper ───────────────────────────────────────────────────────────
 
   const setResume = (updater: (r: ResumeData) => ResumeData) =>
     setParsedResume(prev => prev ? updater(prev) : prev)
-
-  const updateExp = (i: number, updates: Partial<ExperienceEntry>) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, ...updates } : e) }))
-
-  const setExpBullet = (ei: number, bi: number, val: string) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.map((b, j) => j === bi ? val : b) } : e) }))
-
-  const addExpBullet = (i: number) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, bullets: [...e.bullets, ""] } : e) }))
-
-  const removeExpBullet = (ei: number, bi: number) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.filter((_, j) => j !== bi) } : e) }))
-
-  const addExp = () =>
-    setResume(r => ({ ...r, experience: [...r.experience, { company: "", title: "", date: "", location: "", bullets: [] }] }))
-
-  const removeExp = (i: number) =>
-    setResume(r => ({ ...r, experience: r.experience.filter((_, j) => j !== i) }))
-
-  const updateProj = (i: number, updates: Partial<ProjectEntry>) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, ...updates } : p) }))
-
-  const setProjBullet = (pi: number, bi: number, val: string) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.map((b, j) => j === bi ? val : b) } : p) }))
-
-  const addProjBullet = (i: number) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, bullets: [...p.bullets, ""] } : p) }))
-
-  const removeProjBullet = (pi: number, bi: number) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.filter((_, j) => j !== bi) } : p) }))
-
-  const addProj = () =>
-    setResume(r => ({ ...r, projects: [...r.projects, { name: "", role: "", date: "", bullets: [] }] }))
-
-  const removeProj = (i: number) =>
-    setResume(r => ({ ...r, projects: r.projects.filter((_, j) => j !== i) }))
-
-  const updateEdu = (i: number, updates: Partial<EducationEntry>) =>
-    setResume(r => ({ ...r, education: r.education.map((e, j) => j === i ? { ...e, ...updates } : e) }))
-
-  const addEdu = () =>
-    setResume(r => ({ ...r, education: [...r.education, { school: "", degree: "", date: "", location: "" }] }))
-
-  const removeEdu = (i: number) =>
-    setResume(r => ({ ...r, education: r.education.filter((_, j) => j !== i) }))
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -638,11 +817,11 @@ function App() {
               </div>
             )}
 
-            {/* Three panels */}
-            <div className="flex gap-3 flex-1 min-h-0" style={{ height: "calc(100vh - 220px)" }}>
+            {/* Two panels with resizable divider */}
+            <div ref={splitContainerRef} className="flex flex-1 min-h-0" style={{ height: "calc(100vh - 220px)" }}>
 
-              {/* LEFT: Preview (40%) */}
-              <div className="w-[40%] flex flex-col gap-1.5 min-w-0">
+              {/* LEFT: Preview */}
+              <div className="flex flex-col gap-1.5 flex-shrink-0 overflow-hidden" style={{ width: leftPx, minWidth: MIN_LEFT_PX }}>
                 <div className="flex items-center gap-1.5 px-1">
                   <FileText size={12} className="text-[#6366f1]" />
                   <span className="text-xs font-semibold">Live Preview</span>
@@ -651,206 +830,168 @@ function App() {
                 <div className="flex-1 overflow-y-auto rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] styled-scroll">
                   <div className="p-3 min-h-full">
                     <div className="bg-white rounded shadow-sm">
-                      <ResumePreview resume={parsedResume} />
+                      <ResumePreview resume={parsedResume} style={resumeStyle} />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* MIDDLE: Editor (30%) */}
-              <div className="w-[30%] flex flex-col gap-1.5 min-w-0">
-                <div className="flex items-center gap-1.5 px-1">
-                  <Edit3 size={12} className="text-[#6366f1]" />
-                  <span className="text-xs font-semibold">Editor</span>
-                </div>
-                {/* Tabs */}
-                <div className="flex gap-0.5 bg-[#f1f5f9] rounded-xl p-1 flex-shrink-0">
-                  {EDITOR_TABS.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[9px] font-medium transition-all ${activeTab === tab.id ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
-                    >
-                      <tab.icon size={11} />{tab.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex-1 overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3 styled-scroll">
-
-                  {activeTab === "personal" && (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Full Name</label>
-                        <input value={parsedResume.name} onChange={e => setResume(r => ({ ...r, name: e.target.value }))} className={inputCls} placeholder="Full Name" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Contact</label>
-                        <input value={parsedResume.contact} onChange={e => setResume(r => ({ ...r, contact: e.target.value }))} className={inputCls} placeholder="email | phone | city, state" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Summary</label>
-                        <textarea value={parsedResume.summary} onChange={e => setResume(r => ({ ...r, summary: e.target.value }))} rows={7} className={`${inputCls} resize-none`} placeholder="Professional summary…" />
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === "experience" && (
-                    <div className="flex flex-col gap-3">
-                      {parsedResume.experience.map((exp, i) => (
-                        <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-                          <button onClick={() => removeExp(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Title</label><input value={exp.title} onChange={e => updateExp(i, { title: e.target.value })} className={inputCls} placeholder="Job Title" /></div>
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Company</label><input value={exp.company} onChange={e => updateExp(i, { company: e.target.value })} className={inputCls} placeholder="Company" /></div>
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={exp.date} onChange={e => updateExp(i, { date: e.target.value })} className={inputCls} placeholder="Jan 2020 – Dec 2022" /></div>
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={exp.location} onChange={e => updateExp(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
-                            {exp.bullets.map((b, bi) => (
-                              <div key={bi} className="flex gap-1 mb-1">
-                                <input value={b} onChange={e => setExpBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="Achievement…" />
-                                <button onClick={() => removeExpBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
-                              </div>
-                            ))}
-                            <button onClick={() => addExpBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
-                          </div>
-                        </div>
-                      ))}
-                      <button onClick={addExp} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-                        <Plus size={12} />Add Experience
-                      </button>
-                    </div>
-                  )}
-
-                  {activeTab === "projects" && (
-                    <div className="flex flex-col gap-3">
-                      {parsedResume.projects.map((proj, i) => (
-                        <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-                          <button onClick={() => removeProj(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Name</label><input value={proj.name} onChange={e => updateProj(i, { name: e.target.value })} className={inputCls} placeholder="Project Name" /></div>
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={proj.date} onChange={e => updateProj(i, { date: e.target.value })} className={inputCls} placeholder="2023" /></div>
-                          </div>
-                          <div><label className="block text-[9px] text-[#64748b] mb-0.5">Role / Tech Stack</label><input value={proj.role} onChange={e => updateProj(i, { role: e.target.value })} className={inputCls} placeholder="React, Node.js…" /></div>
-                          <div>
-                            <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
-                            {proj.bullets.map((b, bi) => (
-                              <div key={bi} className="flex gap-1 mb-1">
-                                <input value={b} onChange={e => setProjBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="What it does…" />
-                                <button onClick={() => removeProjBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
-                              </div>
-                            ))}
-                            <button onClick={() => addProjBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
-                          </div>
-                        </div>
-                      ))}
-                      <button onClick={addProj} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-                        <Plus size={12} />Add Project
-                      </button>
-                    </div>
-                  )}
-
-                  {activeTab === "education" && (
-                    <div className="flex flex-col gap-3">
-                      {parsedResume.education.map((edu, i) => (
-                        <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-                          <button onClick={() => removeEdu(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-                          <div><label className="block text-[9px] text-[#64748b] mb-0.5">School</label><input value={edu.school} onChange={e => updateEdu(i, { school: e.target.value })} className={inputCls} placeholder="University Name" /></div>
-                          <div><label className="block text-[9px] text-[#64748b] mb-0.5">Degree</label><input value={edu.degree} onChange={e => updateEdu(i, { degree: e.target.value })} className={inputCls} placeholder="BS Computer Science" /></div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={edu.date} onChange={e => updateEdu(i, { date: e.target.value })} className={inputCls} placeholder="May 2021" /></div>
-                            <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={edu.location} onChange={e => updateEdu(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
-                          </div>
-                        </div>
-                      ))}
-                      <button onClick={addEdu} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-                        <Plus size={12} />Add Education
-                      </button>
-                    </div>
-                  )}
-
-                  {activeTab === "skills" && (
-                    <div>
-                      <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Skills</label>
-                      <textarea
-                        value={parsedResume.skills}
-                        onChange={e => setResume(r => ({ ...r, skills: e.target.value }))}
-                        rows={12}
-                        className={`${inputCls} resize-none`}
-                        placeholder="Python, React, AWS, Docker — or comma-separated categories"
-                      />
-                      <p className="text-[10px] text-[#94a3b8] mt-1">Separate skills with commas, or group by category</p>
-                    </div>
-                  )}
-                </div>
+              {/* Divider */}
+              <div
+                onMouseDown={handleDividerMouseDown}
+                className="w-2 flex-shrink-0 cursor-col-resize group relative"
+              >
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-[#e2e8f0] group-hover:bg-[#6366f1]/50 transition-colors" />
               </div>
 
-              {/* RIGHT: Suggestions (30%) */}
-              <div className="w-[30%] flex flex-col gap-1.5 min-w-0">
-                <div className="flex items-center gap-1.5 px-1">
-                  <Lightbulb size={12} className="text-[#6366f1]" />
-                  <span className="text-xs font-semibold">AI Suggestions</span>
-                  <span className="ml-auto px-1.5 py-0.5 text-[10px] rounded-full bg-[#eef2ff] text-[#6366f1] border border-[#c7d2fe]">{suggestions.length}</span>
+              {/* RIGHT: Editor + Suggestions + Style */}
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0 overflow-hidden" style={{ minWidth: MIN_RIGHT_PX }}>
+
+                {/* Three-tab bar */}
+                <div className="flex gap-0.5 bg-[#f1f5f9] rounded-xl p-1 flex-shrink-0">
+                  <button
+                    onClick={() => setRightTab("editor")}
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-medium transition-all ${rightTab === "editor" ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
+                  >
+                    <Edit3 size={11} />Editor
+                  </button>
+                  <button
+                    onClick={() => setRightTab("suggestions")}
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-medium transition-all ${rightTab === "suggestions" ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
+                  >
+                    <Lightbulb size={11} />Suggestions
+                    <span className="px-1 rounded-full bg-[#eef2ff] text-[#6366f1] border border-[#c7d2fe]">{suggestions.length}</span>
+                  </button>
+                  <button
+                    onClick={() => setRightTab("style")}
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-medium transition-all ${rightTab === "style" ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
+                  >
+                    <Palette size={11} />Style
+                  </button>
                 </div>
-                <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
-                  {suggestions.map((s, i) => {
-                    const accepted = acceptedIds.has(s.id)
-                    const canAccept = s.location !== null
-                    const sectionCls = SECTION_COLORS[s.section] ?? SECTION_COLORS["Other"]
-                    const { icon: ImpactIcon, cls: impactCls } = IMPACT_CONFIG[s.impact]
-                    return (
-                      <div
-                        key={s.id}
-                        className={`suggestion-card rounded-xl border p-3 slide-in ${accepted ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e2e8f0] bg-white"}`}
-                        style={{ animationDelay: `${i * 40}ms` }}
-                      >
-                        <div className="flex items-center justify-between mb-2 gap-1">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${sectionCls}`}>{s.section}</span>
-                            <span className={`flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${impactCls}`}>
-                              <ImpactIcon size={8} />{s.impact}
-                            </span>
+
+                {/* Editor tab */}
+                {rightTab === "editor" && (
+                  <div className="flex-1 overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3 styled-scroll">
+                    <EditorPanel resume={parsedResume} setResume={setResume} />
+                  </div>
+                )}
+
+                {/* Suggestions tab */}
+                {rightTab === "suggestions" && (
+                  <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
+                    {suggestions.map((s, i) => {
+                      const accepted = acceptedIds.has(s.id)
+                      const canAccept = s.location !== null
+                      const sectionCls = SECTION_COLORS[s.section] ?? SECTION_COLORS["Other"]
+                      const { icon: ImpactIcon, cls: impactCls } = IMPACT_CONFIG[s.impact]
+                      return (
+                        <div
+                          key={s.id}
+                          className={`suggestion-card rounded-xl border p-3 slide-in ${accepted ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e2e8f0] bg-white"}`}
+                          style={{ animationDelay: `${i * 40}ms` }}
+                        >
+                          <div className="flex items-center justify-between mb-2 gap-1">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${sectionCls}`}>{s.section}</span>
+                              <span className={`flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${impactCls}`}>
+                                <ImpactIcon size={8} />{s.impact}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => canAccept && toggleSuggestion(s.id)}
+                              disabled={!canAccept}
+                              title={!canAccept ? "Could not locate this text in your resume — edit manually" : undefined}
+                              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium transition-all flex-shrink-0 ${poppingId === s.id ? "pop" : ""} ${
+                                !canAccept
+                                  ? "opacity-40 cursor-not-allowed border border-[#e2e8f0] text-[#94a3b8]"
+                                  : accepted
+                                    ? "bg-[#6366f1] text-white"
+                                    : "border border-[#e2e8f0] text-[#6366f1] hover:border-[#6366f1] hover:bg-[#eef2ff]"
+                              }`}
+                            >
+                              {accepted
+                                ? <><CheckCircle size={9} />Accepted</>
+                                : !canAccept
+                                  ? <>Manual edit</>
+                                  : <><ThumbsUp size={9} />Accept</>
+                              }
+                            </button>
                           </div>
+
+                          <div className="mb-1.5">
+                            <p className="text-[9px] text-[#dc2626]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><ArrowRight size={7} />Original</p>
+                            <p className="text-[10px] text-[#64748b] bg-[#fef2f2] border border-[#fecaca]/60 rounded-lg px-2 py-1.5 leading-relaxed">{s.original}</p>
+                          </div>
+
+                          <div className="mb-1.5">
+                            <p className="text-[9px] text-[#16a34a]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><Sparkles size={7} />Suggested</p>
+                            <p className="text-[10px] text-[#166534] bg-[#f0fdf4] border border-[#bbf7d0]/60 rounded-lg px-2 py-1.5 leading-relaxed font-medium">{s.suggested}</p>
+                          </div>
+
+                          <div className="flex items-start gap-1 text-[9px] text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-2 py-1.5">
+                            <Info size={9} className="mt-0.5 flex-shrink-0 text-[#6366f1]" />
+                            <span className="leading-relaxed">{s.reason}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Style tab */}
+                {rightTab === "style" && (
+                  <div className="flex-1 overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-4 styled-scroll">
+                    <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-2">Accent Color</label>
+                    <div className="flex items-center gap-3 mb-2">
+                      <input
+                        type="color"
+                        value={resumeStyle.accentColor}
+                        onChange={e => setResumeStyle(s => ({ ...s, accentColor: e.target.value }))}
+                        className="w-10 h-10 rounded-lg cursor-pointer border border-[#e2e8f0] p-0.5"
+                      />
+                      <span className="text-xs text-[#64748b] font-mono">{resumeStyle.accentColor}</span>
+                    </div>
+                    <p className="text-[10px] text-[#94a3b8]">Colors section headings in preview and exported PDF.</p>
+
+                    <div className="mt-4">
+                      <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-2">Header Alignment</label>
+                      <div className="flex gap-0.5 bg-[#f1f5f9] rounded-lg p-0.5">
+                        {(['left', 'center', 'right'] as const).map(align => (
                           <button
-                            onClick={() => canAccept && toggleSuggestion(s.id)}
-                            disabled={!canAccept}
-                            title={!canAccept ? "Could not locate this text in your resume — edit manually" : undefined}
-                            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium transition-all flex-shrink-0 ${poppingId === s.id ? "pop" : ""} ${
-                              !canAccept
-                                ? "opacity-40 cursor-not-allowed border border-[#e2e8f0] text-[#94a3b8]"
-                                : accepted
-                                  ? "bg-[#6366f1] text-white"
-                                  : "border border-[#e2e8f0] text-[#6366f1] hover:border-[#6366f1] hover:bg-[#eef2ff]"
-                            }`}
+                            key={align}
+                            onClick={() => setResumeStyle(s => ({ ...s, headerAlignment: align }))}
+                            className={`flex-1 py-1.5 rounded-md text-[10px] font-medium capitalize transition-all ${resumeStyle.headerAlignment === align ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
                           >
-                            {accepted
-                              ? <><CheckCircle size={9} />Accepted</>
-                              : !canAccept
-                                ? <>Manual edit</>
-                                : <><ThumbsUp size={9} />Accept</>
-                            }
+                            {align.charAt(0).toUpperCase() + align.slice(1)}
                           </button>
-                        </div>
-
-                        <div className="mb-1.5">
-                          <p className="text-[9px] text-[#dc2626]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><ArrowRight size={7} />Original</p>
-                          <p className="text-[10px] text-[#64748b] bg-[#fef2f2] border border-[#fecaca]/60 rounded-lg px-2 py-1.5 leading-relaxed">{s.original}</p>
-                        </div>
-
-                        <div className="mb-1.5">
-                          <p className="text-[9px] text-[#16a34a]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><Sparkles size={7} />Suggested</p>
-                          <p className="text-[10px] text-[#166534] bg-[#f0fdf4] border border-[#bbf7d0]/60 rounded-lg px-2 py-1.5 leading-relaxed font-medium">{s.suggested}</p>
-                        </div>
-
-                        <div className="flex items-start gap-1 text-[9px] text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-2 py-1.5">
-                          <Info size={9} className="mt-0.5 flex-shrink-0 text-[#6366f1]" />
-                          <span className="leading-relaxed">{s.reason}</span>
-                        </div>
+                        ))}
                       </div>
-                    )
-                  })}
-                </div>
+                      <p className="text-[10px] text-[#94a3b8] mt-1.5">Aligns the name and contact header block.</p>
+                    </div>
+
+                    {([
+                      { key: 'sectionSpacing', label: 'Section Spacing', min: 4, max: 24, step: 1, unit: 'px' },
+                      { key: 'entrySpacing',   label: 'Entry Spacing',   min: 2, max: 16, step: 1, unit: 'px' },
+                      { key: 'lineSpacing',    label: 'Line Spacing',    min: 1.0, max: 2.0, step: 0.05, unit: '' },
+                    ] as const).map(({ key, label, min, max, step, unit }) => (
+                      <div key={key} className="mt-4">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="text-[10px] font-semibold text-[#64748b] uppercase tracking-widest">{label}</label>
+                          <span className="text-[10px] font-mono text-[#6366f1]">{resumeStyle[key].toFixed(step < 1 ? 2 : 0)}{unit}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={min} max={max} step={step}
+                          value={resumeStyle[key]}
+                          onChange={e => setResumeStyle(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                          className="w-full accent-[#6366f1] cursor-pointer"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
               </div>
             </div>
           </div>

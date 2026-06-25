@@ -212,7 +212,7 @@ async def analyze(
 async def export_resume(request: ExportRequest) -> Response:
     """Render the submitted ResumeData as a PDF. Frontend has already applied all changes."""
     try:
-        pdf_bytes = generate_pdf(request.parsed_resume.model_dump())
+        pdf_bytes = generate_pdf(request.parsed_resume.model_dump(), accent_color=request.style.accent_color, header_alignment=request.style.header_alignment, section_spacing=request.style.section_spacing, entry_spacing=request.style.entry_spacing, line_spacing=request.style.line_spacing)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="PDF generation failed") from exc
 

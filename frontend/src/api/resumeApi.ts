@@ -1,5 +1,5 @@
 import axios from "axios"
-import type { AnalyzeResponse, ResumeData } from "../types"
+import type { AnalyzeResponse, ResumeData, ResumeStyle } from "../types"
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 
@@ -14,7 +14,7 @@ export async function analyzeResume(
   try {
     const { data } = await axios.post<AnalyzeResponse>(`${BASE_URL}/api/analyze`, form, {
       headers: { "Content-Type": "multipart/form-data" },
-      timeout: 60_000,
+      timeout: 3000_000,
     })
     return data
   } catch (err) {
@@ -25,12 +25,13 @@ export async function analyzeResume(
   }
 }
 
-export async function exportResume(parsedResume: ResumeData): Promise<Blob> {
+export async function exportResume(parsedResume: ResumeData, style: ResumeStyle): Promise<Blob> {
   const { data } = await axios.post(
     `${BASE_URL}/api/export`,
     {
       parsed_resume: parsedResume,
       accepted_suggestions: [],
+      style: { accent_color: style.accentColor, header_alignment: style.headerAlignment, section_spacing: style.sectionSpacing, entry_spacing: style.entrySpacing, line_spacing: style.lineSpacing },
     },
     { responseType: "blob" }
   )
