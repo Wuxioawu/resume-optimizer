@@ -14,7 +14,7 @@ allows users to accept or reject each suggestion individually, and exports a fin
 - Tailwind CSS (styling)
 - Axios (API requests)
 - lucide-react (icons)
-- Note: `pdf-lib` and `pdfjs-dist` appear in package.json but are not imported anywhere in the source — the live preview and PDF export are handled entirely server-side and via a custom React component.
+- Live preview and PDF export are handled entirely server-side and via a custom React component.
 
 ### Backend
 - Python 3.12 + FastAPI
@@ -22,7 +22,6 @@ allows users to accept or reject each suggestion individually, and exports a fin
 - WeasyPrint (HTML-to-PDF generation)
 - OpenRouter API (free-tier multi-model fallback chain)
 - python-multipart (file uploads)
-- Note: `reportlab` and `PyMuPDF` remain in requirements.txt but are unused in the current code.
 
 ### Dev Tools
 - Node.js 20+
@@ -87,7 +86,7 @@ User may also manually edit fields in the editor
               ↓
 User clicks "Export PDF"
               ↓
-Backend: applies accepted suggestions to ResumeData, renders HTML, WeasyPrint → PDF
+Backend: renders the submitted ResumeData as-is via WeasyPrint → PDF
               ↓
 User downloads optimized_resume.pdf
 ```
@@ -123,16 +122,14 @@ POST /api/analyze
   Request:  FormData { resume: File, job_description: string }
   Response: {
     suggestions:   Suggestion[],
-    resume_text:   string,          # raw extracted text
     match_score:   number,          # 0–100
-    temp_file_id:  string,          # UUID, for reference only
     parsed_resume: ResumeData       # structured resume data
   }
 
 POST /api/export
   Request:  {
-    parsed_resume:        ResumeData,
-    accepted_suggestions: Suggestion[]   # full list; only accepted: true entries are applied
+    parsed_resume:        ResumeData,   # frontend sends final state (edits + accepted suggestions already applied)
+    accepted_suggestions: Suggestion[]  # recorded for reference; backend renders parsed_resume as-is
   }
   Response: PDF file (blob), filename = optimized_resume.pdf
 ```
@@ -140,14 +137,22 @@ POST /api/export
 ### Core Data Structures
 
 ```typescript
+interface SuggestionLocation {
+  kind:         "flat" | "experience" | "projects" | "education"
+  field:        string
+  index?:       number
+  bullet_index?: number
+}
+
 interface Suggestion {
   id:        string
-  section:   "Summary" | "Experience" | "Skills" | "Education" | "Other"
+  section:   "Summary" | "Experience" | "Skills" | "Education" | "Projects" | "Other"
   original:  string        // exact text copied from resume
   suggested: string        // AI-recommended replacement
   reason:    string        // why this change helps
   impact:    "high" | "medium" | "low"
   accepted:  boolean
+  location:  SuggestionLocation | null  // precise slot in ResumeData; null if unresolved
 }
 
 interface ResumeData {

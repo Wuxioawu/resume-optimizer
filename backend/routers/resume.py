@@ -166,9 +166,15 @@ async def analyze(
 
     try:
         parsed_dict = parse_resume(resume_text)
-        parsed_resume = ResumeData(**parsed_dict)
-    except Exception:
+    except Exception as exc:
+        print(f"[analyze] ⚠️ resume_parser failed — falling back to empty resume: {exc}")
         parsed_dict = {}
+
+    try:
+        parsed_resume = ResumeData(**parsed_dict)
+    except ValidationError as exc:
+        print(f"[analyze] ⚠️ ResumeData validation failed — raw data: {parsed_dict}")
+        print(f"[analyze] ValidationError detail: {exc}")
         parsed_resume = ResumeData()
 
     suggestions: list[Suggestion] = []
@@ -197,9 +203,7 @@ async def analyze(
 
     return AnalyzeResponse(
         suggestions=suggestions,
-        resume_text=resume_text,
         match_score=result.get("match_score", 0),
-        temp_file_id=temp_file_id,
         parsed_resume=parsed_resume,
     )
 

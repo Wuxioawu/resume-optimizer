@@ -50,8 +50,6 @@ export interface ResumeData {
 
 export interface AnalyzeResponse {
   suggestions: Suggestion[]
-  resume_text: string
   match_score: number
-  temp_file_id: string
   parsed_resume: ResumeData
 }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import type { LucideIcon } from "lucide-react"
 import {
-  Sparkles, Star, FileText, Zap, Target, TrendingUp,
+  Sparkles, FileText, Zap, Target, TrendingUp,
   Upload, CheckCircle, Briefcase, Loader2, Award, CheckSquare,
   CheckCheck, X, Download, Lightbulb, Flame, Minus, ArrowRight,
   Info, ThumbsUp, Heart, User, GraduationCap, FolderOpen,
@@ -485,9 +485,6 @@ function App() {
                 Start Over
               </button>
             )}
-            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[#64748b] text-xs hover:border-[#6366f1]/40 transition-all">
-              <Star size={11} />Star
-            </button>
           </div>
         </div>
       </header>
