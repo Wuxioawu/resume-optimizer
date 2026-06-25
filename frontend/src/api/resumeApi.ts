@@ -1,5 +1,5 @@
 import axios from "axios"
-import type { AnalyzeResponse, ResumeData, ResumeStyle } from "../types"
+import type { AnalyzeResponse, ResumeData, ResumeStyle, Suggestion } from "../types"
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 
@@ -14,12 +14,32 @@ export async function analyzeResume(
   try {
     const { data } = await axios.post<AnalyzeResponse>(`${BASE_URL}/api/analyze`, form, {
       headers: { "Content-Type": "multipart/form-data" },
-      timeout: 3000_000,
+      timeout: 180_000,
     })
     return data
   } catch (err) {
     if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
       throw new Error("Analysis timed out. The AI models are busy — please try again in a moment.")
+    }
+    throw err
+  }
+}
+
+export async function rewriteResume(
+  parsedResume: ResumeData,
+  instruction: string,
+  jobDescription: string
+): Promise<Suggestion[]> {
+  try {
+    const { data } = await axios.post<Suggestion[]>(
+      `${BASE_URL}/api/rewrite`,
+      { parsed_resume: parsedResume, instruction, job_description: jobDescription },
+      { timeout: 180_000 }
+    )
+    return data
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
+      throw new Error("Rewrite timed out. The AI models are busy — please try again in a moment.")
     }
     throw err
   }

@@ -127,3 +127,9 @@ class ExportRequest(BaseModel):
     parsed_resume: ResumeData
     accepted_suggestions: list[Suggestion] = []
     style: ResumeStyle = ResumeStyle()
+
+
+class RewriteRequest(BaseModel):
+    parsed_resume: ResumeData
+    instruction: str
+    job_description: str = ""

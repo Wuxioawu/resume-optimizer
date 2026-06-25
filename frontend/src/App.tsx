@@ -7,7 +7,7 @@ import {
   Info, ThumbsUp, Heart, User, GraduationCap, FolderOpen,
   Wrench, Plus, Trash2, Edit3, Palette,
 } from "lucide-react"
-import { analyzeResume, exportResume } from "./api/resumeApi"
+import { analyzeResume, exportResume, rewriteResume } from "./api/resumeApi"
 import type {
   Suggestion, SuggestionLocation, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry, ResumeStyle,
 } from "./types"
@@ -418,6 +418,8 @@ function App() {
   const [matchScore, setMatchScore] = useState(0)
   const [displayScore, setDisplayScore] = useState(0)
   const [poppingId, setPoppingId] = useState<string | null>(null)
+  const [rewriteInstruction, setRewriteInstruction] = useState("")
+  const [isRewriting, setIsRewriting] = useState(false)
   const [leftPx, setLeftPx] = useState<number>(() => {
     const stored = localStorage.getItem(SPLIT_KEY)
     return stored ? Math.max(MIN_LEFT_PX, Number(stored)) : 600
@@ -641,6 +643,61 @@ function App() {
     setResumeFile(null); setJobDescription(""); setMatchScore(0)
     setDisplayScore(0); setError(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  // ── AI Rewrite ──────────────────────────────────────────────────────────────
+
+  const handleRewrite = async () => {
+    if (!parsedResume || !rewriteInstruction.trim() || isRewriting) return
+    setIsRewriting(true)
+    setError(null)
+    try {
+      const incoming = await rewriteResume(parsedResume, rewriteInstruction, jobDescription)
+
+      // Snapshot current state — compute all updates together to preserve the invariant
+      let nextResume = parsedResume
+      const newAcceptedIds = new Set(acceptedIds)
+      const newPriorValues = new Map(priorValues)
+      let nextSuggestions = [...suggestions]
+
+      for (const inc of incoming) {
+        const incKey = locationKey(inc.location)
+
+        if (incKey !== null) {
+          // Replace any existing suggestion at this location.
+          // If it was accepted, revert the field first so the location is clean.
+          const conflict = nextSuggestions.find(s => locationKey(s.location) === incKey)
+          if (conflict) {
+            if (newAcceptedIds.has(conflict.id) && conflict.location) {
+              const prior = newPriorValues.get(conflict.id)
+              if (prior !== undefined) {
+                nextResume = writeFieldAt(nextResume, conflict.location, prior)
+              }
+            }
+            newAcceptedIds.delete(conflict.id)
+            newPriorValues.delete(conflict.id)
+            nextSuggestions = nextSuggestions.filter(s => s.id !== conflict.id)
+          }
+        } else {
+          // Advisory (null location): skip pure text duplicates
+          const isDup = nextSuggestions.some(
+            s => s.location === null && s.original === inc.original && s.suggested === inc.suggested
+          )
+          if (isDup) continue
+        }
+
+        nextSuggestions = [inc, ...nextSuggestions]
+      }
+
+      setParsedResume(nextResume)
+      setAcceptedIds(newAcceptedIds)
+      setPriorValues(newPriorValues)
+      setSuggestions(nextSuggestions)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rewrite failed. Please try again.")
+    } finally {
+      setIsRewriting(false)
+    }
   }
 
   // ── Editor helper ───────────────────────────────────────────────────────────
@@ -879,7 +936,36 @@ function App() {
 
                 {/* Suggestions tab */}
                 {rightTab === "suggestions" && (
-                  <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
+                  <div className="flex-1 flex flex-col gap-2 min-h-0">
+
+                    {/* AI Rewrite box */}
+                    <div className="bg-white rounded-xl border border-[#e2e8f0] p-3 flex-shrink-0">
+                      <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">
+                        AI Rewrite
+                      </label>
+                      <textarea
+                        value={rewriteInstruction}
+                        onChange={e => setRewriteInstruction(e.target.value)}
+                        rows={2}
+                        placeholder="e.g. use stronger action verbs, shorten my summary…"
+                        className={`${inputCls} resize-none mb-2`}
+                        disabled={isRewriting}
+                      />
+                      <button
+                        onClick={handleRewrite}
+                        disabled={!rewriteInstruction.trim() || isRewriting}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+                      >
+                        {isRewriting
+                          ? <><Loader2 size={11} className="animate-spin" />Rewriting…</>
+                          : <><Sparkles size={11} />Rewrite</>
+                        }
+                      </button>
+                    </div>
+
+                    {/* Suggestion cards */}
+                    <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
                     {suggestions.map((s, i) => {
                       const accepted = acceptedIds.has(s.id)
                       const canAccept = s.location !== null
@@ -936,6 +1022,7 @@ function App() {
                         </div>
                       )
                     })}
+                    </div>
                   </div>
                 )}
 

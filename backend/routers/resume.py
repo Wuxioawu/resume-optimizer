@@ -9,8 +9,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from models.schemas import AnalyzeResponse, ExportRequest, ResumeData, Suggestion, SuggestionLocation
-from services.openrouter_service import analyze_resume
+from models.schemas import AnalyzeResponse, ExportRequest, ResumeData, RewriteRequest, Suggestion, SuggestionLocation
+from services.openrouter_service import analyze_resume, rewrite_resume
 from services.pdf_generator import generate_pdf
 from services.pdf_parser import extract_text
 from services.resume_parser import parse_resume
@@ -206,6 +206,45 @@ async def analyze(
         match_score=result.get("match_score", 0),
         parsed_resume=parsed_resume,
     )
+
+
+@router.post("/rewrite", response_model=list[Suggestion])
+async def rewrite(request: RewriteRequest) -> list[Suggestion]:
+    """Generate targeted rewrite suggestions from a user instruction, anchored via resolve_location."""
+    parsed_dict = request.parsed_resume.model_dump()
+
+    try:
+        raw_suggestions = rewrite_resume(parsed_dict, request.instruction, request.job_description)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="OpenRouter API request failed") from exc
+
+    suggestions: list[Suggestion] = []
+    for s in raw_suggestions:
+        try:
+            loc_dict = resolve_location(
+                s.get("original", ""),
+                s.get("section", "Other"),
+                parsed_dict,
+            )
+            loc = SuggestionLocation(**loc_dict) if loc_dict else None
+            suggestions.append(
+                Suggestion(
+                    id=s.get("id", str(uuid.uuid4())),
+                    section=s.get("section", "Other"),
+                    original=s.get("original", ""),
+                    suggested=s.get("suggested", ""),
+                    reason=s.get("reason", ""),
+                    impact=s.get("impact", "medium"),
+                    accepted=False,
+                    location=loc,
+                )
+            )
+        except ValidationError:
+            continue
+
+    return suggestions
 
 
 @router.post("/export")

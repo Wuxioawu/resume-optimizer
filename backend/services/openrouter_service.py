@@ -67,6 +67,57 @@ def call_openrouter(messages: list[dict], api_key: str) -> str:
     raise ValueError(f"All models failed: {'; '.join(errors)}")
 
 
+def rewrite_resume(parsed_dict: dict, instruction: str, job_description: str) -> list[dict]:
+    """Call OpenRouter to generate targeted rewrite suggestions from a user instruction."""
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY is not set")
+
+    resume_json = json.dumps(parsed_dict, indent=2)
+    jd_block = f"\n\nJob Description:\n{job_description}" if job_description.strip() else ""
+
+    prompt = f"""You are a professional resume optimization consultant for English-speaking job markets.
+
+The user wants to improve their resume with this specific instruction: "{instruction}"
+
+Rules:
+1. Return ONLY valid JSON — no markdown, no code fences, no extra text
+2. Every suggestion must include the EXACT original text copied from the resume JSON below
+3. Focus ALL suggestions on the user's instruction — do not suggest unrelated changes
+4. Maximum 8 suggestions ordered by impact
+5. Never fabricate experience — only reframe what already exists
+6. All suggested text must be in professional English
+7. section must be one of: Summary, Experience, Skills, Education, Projects, Other
+8. The original field MUST be copied EXACTLY from the resume text including all spaces
+
+Resume (JSON):
+{resume_json}{jd_block}
+
+Return exactly this JSON format:
+{{
+  "suggestions": [
+    {{
+      "id": "1",
+      "section": "Experience",
+      "original": "exact text copied from resume",
+      "suggested": "improved version following the instruction",
+      "reason": "why this change satisfies the instruction",
+      "impact": "high"
+    }}
+  ]
+}}"""
+
+    raw = call_openrouter([{"role": "user", "content": prompt}], api_key)
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+
+    try:
+        result = json.loads(raw.strip())
+        return result.get("suggestions", [])
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Model returned non-JSON: {exc}") from exc
+
+
 def analyze_resume(resume_text: str, job_description: str) -> dict:
     """Call OpenRouter API to analyze resume against job description."""
     api_key = os.getenv("OPENROUTER_API_KEY")
