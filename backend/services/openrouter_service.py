@@ -88,7 +88,7 @@ Rules:
 4. Maximum 8 suggestions ordered by impact
 5. Never fabricate experience — only reframe what already exists
 6. All suggested text must be in professional English
-7. section must be one of: Summary, Experience, Skills, Education, Other
+7. section must be one of: Summary, Experience, Skills, Education, Projects, Other
 8. The original field MUST be copied EXACTLY from the resume text including all spaces
 
 Resume:

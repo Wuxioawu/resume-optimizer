@@ -1,11 +1,19 @@
+export interface SuggestionLocation {
+  kind: "flat" | "experience" | "projects" | "education"
+  field: string
+  index?: number
+  bullet_index?: number
+}
+
 export interface Suggestion {
   id: string
-  section: "Summary" | "Experience" | "Skills" | "Education" | "Other"
+  section: "Summary" | "Experience" | "Skills" | "Education" | "Projects" | "Other"
   original: string
   suggested: string
   reason: string
   impact: "high" | "medium" | "low"
   accepted: boolean
+  location: SuggestionLocation | null
 }
 
 export interface ExperienceEntry {

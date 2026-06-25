@@ -9,7 +9,7 @@ import {
 } from "lucide-react"
 import { analyzeResume, exportResume } from "./api/resumeApi"
 import type {
-  Suggestion, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry,
+  Suggestion, SuggestionLocation, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry,
 } from "./types"
 
 type AppState = "idle" | "loading" | "results" | "exporting"
@@ -22,6 +22,7 @@ const SECTION_COLORS: Record<string, string> = {
   Experience: "bg-[#f5f3ff] text-[#7c3aed] border-[#ddd6fe]",
   Skills:     "bg-[#f0f9ff] text-[#0284c7] border-[#bae6fd]",
   Education:  "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]",
+  Projects:   "bg-[#fff7ed] text-[#c2410c] border-[#fed7aa]",
   Other:      "bg-[#f8fafc] text-[#64748b] border-[#e2e8f0]",
 }
 
@@ -39,27 +40,115 @@ const EDITOR_TABS: { id: EditorTab; label: string; icon: LucideIcon }[] = [
   { id: "skills",     label: "Skills",     icon: Wrench },
 ]
 
-function applyText(r: ResumeData, section: string, orig: string, sugg: string): ResumeData {
-  const sub = (s: string) => s.includes(orig) ? s.replace(orig, sugg) : s
-  switch (section) {
-    case "Summary":    return { ...r, summary: sub(r.summary) }
-    case "Skills":     return { ...r, skills: sub(r.skills) }
-    case "Experience": return {
-      ...r,
-      experience: r.experience.map(e => ({
-        ...e, title: sub(e.title), company: sub(e.company),
-        bullets: e.bullets.map(sub),
-      })),
-    }
-    case "Education": return {
-      ...r,
-      education: r.education.map(e => ({
-        ...e, school: sub(e.school), degree: sub(e.degree),
-      })),
-    }
-    default: return r
+// ── Location helpers ──────────────────────────────────────────────────────────
+
+function locationKey(loc: SuggestionLocation | null | undefined): string | null {
+  if (!loc) return null
+  const base = `${loc.kind}:${loc.field}`
+  if (loc.index !== undefined) {
+    if (loc.bullet_index !== undefined) return `${base}:${loc.index}:${loc.bullet_index}`
+    return `${base}:${loc.index}`
   }
+  return base
 }
+
+function readFieldAt(r: ResumeData, loc: SuggestionLocation): string {
+  if (loc.kind === "flat") {
+    if (loc.field === "summary") return r.summary
+    if (loc.field === "skills")  return r.skills
+    if (loc.field === "name")    return r.name
+    if (loc.field === "contact") return r.contact
+    return ""
+  }
+  const idx = loc.index
+  if (idx === undefined) return ""
+  if (loc.kind === "experience") {
+    const e = r.experience[idx]
+    if (!e) return ""
+    if (loc.field === "bullet") return loc.bullet_index !== undefined ? e.bullets[loc.bullet_index] ?? "" : ""
+    if (loc.field === "title")    return e.title
+    if (loc.field === "company")  return e.company
+    if (loc.field === "date")     return e.date
+    if (loc.field === "location") return e.location
+    return ""
+  }
+  if (loc.kind === "projects") {
+    const p = r.projects[idx]
+    if (!p) return ""
+    if (loc.field === "bullet") return loc.bullet_index !== undefined ? p.bullets[loc.bullet_index] ?? "" : ""
+    if (loc.field === "name") return p.name
+    if (loc.field === "role") return p.role
+    if (loc.field === "date") return p.date
+    return ""
+  }
+  if (loc.kind === "education") {
+    const e = r.education[idx]
+    if (!e) return ""
+    if (loc.field === "school")   return e.school
+    if (loc.field === "degree")   return e.degree
+    if (loc.field === "date")     return e.date
+    if (loc.field === "location") return e.location
+    return ""
+  }
+  return ""
+}
+
+function writeFieldAt(r: ResumeData, loc: SuggestionLocation, value: string): ResumeData {
+  if (loc.kind === "flat") {
+    if (loc.field === "summary") return { ...r, summary: value }
+    if (loc.field === "skills")  return { ...r, skills: value }
+    if (loc.field === "name")    return { ...r, name: value }
+    if (loc.field === "contact") return { ...r, contact: value }
+    return r
+  }
+  const idx = loc.index
+  if (idx === undefined) return r
+  if (loc.kind === "experience") {
+    return {
+      ...r,
+      experience: r.experience.map((e, i) => {
+        if (i !== idx) return e
+        if (loc.field === "bullet" && loc.bullet_index !== undefined)
+          return { ...e, bullets: e.bullets.map((b, j) => j === loc.bullet_index ? value : b) }
+        if (loc.field === "title")    return { ...e, title: value }
+        if (loc.field === "company")  return { ...e, company: value }
+        if (loc.field === "date")     return { ...e, date: value }
+        if (loc.field === "location") return { ...e, location: value }
+        return e
+      }),
+    }
+  }
+  if (loc.kind === "projects") {
+    return {
+      ...r,
+      projects: r.projects.map((p, i) => {
+        if (i !== idx) return p
+        if (loc.field === "bullet" && loc.bullet_index !== undefined)
+          return { ...p, bullets: p.bullets.map((b, j) => j === loc.bullet_index ? value : b) }
+        if (loc.field === "name") return { ...p, name: value }
+        if (loc.field === "role") return { ...p, role: value }
+        if (loc.field === "date") return { ...p, date: value }
+        return p
+      }),
+    }
+  }
+  if (loc.kind === "education") {
+    return {
+      ...r,
+      education: r.education.map((e, i) => {
+        if (i !== idx) return e
+        if (loc.field === "school")   return { ...e, school: value }
+        if (loc.field === "degree")   return { ...e, degree: value }
+        if (loc.field === "date")     return { ...e, date: value }
+        if (loc.field === "location") return { ...e, location: value }
+        return e
+      }),
+    }
+  }
+  return r
+}
+
+// ── Preview component ─────────────────────────────────────────────────────────
 
 function ResumePreview({ resume }: { resume: ResumeData }) {
   const SectionHead = ({ label }: { label: string }) => (
@@ -118,6 +207,8 @@ function ResumePreview({ resume }: { resume: ResumeData }) {
 
 const inputCls = "w-full bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-3 py-1.5 text-xs text-[#0f172a] placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1]/50 focus:ring-1 focus:ring-[#6366f1]/15 transition-all"
 
+// ── App ───────────────────────────────────────────────────────────────────────
+
 function App() {
   const [state, setState] = useState<AppState>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -125,6 +216,10 @@ function App() {
   const [jobDescription, setJobDescription] = useState("")
   const [parsedResume, setParsedResume] = useState<ResumeData | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  // Source-of-truth for which suggestions are applied — replaces suggestion.accepted
+  const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set())
+  // Snapshots the field value at the moment each suggestion was accepted, enabling exact restore on reject
+  const [priorValues, setPriorValues] = useState<Map<string, string>>(new Map())
   const [activeTab, setActiveTab] = useState<EditorTab>("personal")
   const [matchScore, setMatchScore] = useState(0)
   const [displayScore, setDisplayScore] = useState(0)
@@ -150,6 +245,8 @@ function App() {
       const data = await analyzeResume(resumeFile, jobDescription)
       setParsedResume(data.parsed_resume)
       setSuggestions(data.suggestions)
+      setAcceptedIds(new Set())
+      setPriorValues(new Map())
       setMatchScore(data.match_score)
       setState("results")
     } catch (err: unknown) {
@@ -158,45 +255,143 @@ function App() {
     }
   }
 
+  // ── Accept / reject ─────────────────────────────────────────────────────────
+  //
+  // Invariant: id ∈ acceptedIds  ↔  parsedResume[location] === suggestion.suggested
+  //
+  // Enforced by option (a): at most one accepted suggestion per location.
+  // Accepting B on a location that already has A accepted auto-rejects A first
+  // (restoring priorValues["A"]) before applying B, keeping state in sync.
+
   const toggleSuggestion = (id: string) => {
     const s = suggestions.find(x => x.id === id)
-    if (!s) return
-    const willAccept = !s.accepted
-    setParsedResume(prev =>
-      prev
-        ? willAccept
-          ? applyText(prev, s.section, s.original, s.suggested)
-          : applyText(prev, s.section, s.suggested, s.original)
-        : prev
-    )
-    setSuggestions(prev => prev.map(x => x.id === id ? { ...x, accepted: willAccept } : x))
+    if (!s || !s.location || !parsedResume) return
+
+    const willAccept = !acceptedIds.has(id)
+    const locKey = locationKey(s.location)!
+
+    if (willAccept) {
+      const conflicting = suggestions.find(
+        other => other.id !== id && acceptedIds.has(other.id) && locationKey(other.location) === locKey
+      )
+
+      let nextResume = parsedResume
+      const newPrior = new Map(priorValues)
+      const newIds = new Set(acceptedIds)
+
+      // Auto-reject any existing accepted suggestion at the same location
+      if (conflicting?.location) {
+        const conflictPrior = newPrior.get(conflicting.id)
+        if (conflictPrior !== undefined) {
+          nextResume = writeFieldAt(nextResume, conflicting.location, conflictPrior)
+        }
+        newPrior.delete(conflicting.id)
+        newIds.delete(conflicting.id)
+      }
+
+      // Snapshot current field value, then apply
+      newPrior.set(id, readFieldAt(nextResume, s.location))
+      newIds.add(id)
+      nextResume = writeFieldAt(nextResume, s.location, s.suggested)
+
+      setParsedResume(nextResume)
+      setPriorValues(newPrior)
+      setAcceptedIds(newIds)
+    } else {
+      // Reject: restore exact pre-accept snapshot
+      const prior = priorValues.get(id)
+      let nextResume = parsedResume
+      if (prior !== undefined) {
+        nextResume = writeFieldAt(nextResume, s.location, prior)
+      }
+      const newPrior = new Map(priorValues)
+      newPrior.delete(id)
+      const newIds = new Set(acceptedIds)
+      newIds.delete(id)
+
+      setParsedResume(nextResume)
+      setPriorValues(newPrior)
+      setAcceptedIds(newIds)
+    }
+
     setPoppingId(id)
     setTimeout(() => setPoppingId(null), 300)
   }
 
   const acceptAll = () => {
     if (!parsedResume) return
-    let r = parsedResume
-    suggestions.forEach(s => { if (!s.accepted) r = applyText(r, s.section, s.original, s.suggested) })
-    setParsedResume(r)
-    setSuggestions(prev => prev.map(s => ({ ...s, accepted: true })))
+
+    let nextResume = parsedResume
+    const newPrior = new Map(priorValues)
+    const newIds = new Set(acceptedIds)
+    // Track which location key is currently accepted (for same-location collision during bulk accept)
+    const locKeyToId = new Map<string, string>()
+    for (const s of suggestions) {
+      if (newIds.has(s.id) && s.location) {
+        const k = locationKey(s.location)
+        if (k) locKeyToId.set(k, s.id)
+      }
+    }
+
+    for (const s of suggestions) {
+      if (newIds.has(s.id) || !s.location) continue
+      const k = locationKey(s.location)
+      if (!k) continue
+
+      const conflictId = locKeyToId.get(k)
+      if (conflictId) {
+        const conflict = suggestions.find(x => x.id === conflictId)
+        const conflictPrior = newPrior.get(conflictId)
+        if (conflict?.location && conflictPrior !== undefined) {
+          nextResume = writeFieldAt(nextResume, conflict.location, conflictPrior)
+        }
+        newPrior.delete(conflictId)
+        newIds.delete(conflictId)
+      }
+
+      newPrior.set(s.id, readFieldAt(nextResume, s.location))
+      newIds.add(s.id)
+      locKeyToId.set(k, s.id)
+      nextResume = writeFieldAt(nextResume, s.location, s.suggested)
+    }
+
+    setParsedResume(nextResume)
+    setPriorValues(newPrior)
+    setAcceptedIds(newIds)
   }
 
   const rejectAll = () => {
     if (!parsedResume) return
-    let r = parsedResume
-    ;[...suggestions].reverse().forEach(s => { if (s.accepted) r = applyText(r, s.section, s.suggested, s.original) })
-    setParsedResume(r)
-    setSuggestions(prev => prev.map(s => ({ ...s, accepted: false })))
+
+    let nextResume = parsedResume
+    const newPrior = new Map(priorValues)
+    const newIds = new Set(acceptedIds)
+
+    for (const s of suggestions) {
+      if (!newIds.has(s.id) || !s.location) continue
+      const prior = newPrior.get(s.id)
+      if (prior !== undefined) {
+        nextResume = writeFieldAt(nextResume, s.location, prior)
+      }
+      newPrior.delete(s.id)
+      newIds.delete(s.id)
+    }
+
+    setParsedResume(nextResume)
+    setPriorValues(newPrior)
+    setAcceptedIds(newIds)
   }
+
+  // ── Export ──────────────────────────────────────────────────────────────────
 
   const handleExport = async () => {
     if (!parsedResume) return
     setState("exporting")
     setError(null)
     try {
-      const accepted = suggestions.filter(s => s.accepted)
-      const blob = await exportResume(parsedResume, accepted)
+      // parsedResume already reflects all accepted suggestions and manual edits.
+      // Backend renders it as-is — no re-application.
+      const blob = await exportResume(parsedResume)
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url; a.download = "optimized_resume.pdf"; a.click()
@@ -210,10 +405,13 @@ function App() {
 
   const handleReset = () => {
     setState("idle"); setParsedResume(null); setSuggestions([])
+    setAcceptedIds(new Set()); setPriorValues(new Map())
     setResumeFile(null); setJobDescription(""); setMatchScore(0)
     setDisplayScore(0); setError(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
+
+  // ── Editor helpers ──────────────────────────────────────────────────────────
 
   const setResume = (updater: (r: ResumeData) => ResumeData) =>
     setParsedResume(prev => prev ? updater(prev) : prev)
@@ -263,9 +461,13 @@ function App() {
   const removeEdu = (i: number) =>
     setResume(r => ({ ...r, education: r.education.filter((_, j) => j !== i) }))
 
-  const acceptedCount = suggestions.filter(s => s.accepted).length
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const acceptedCount = acceptedIds.size
   const scoreOffset = CIRCUMFERENCE * (1 - displayScore / 100)
   const hasResults = state === "results" || state === "exporting"
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] flex flex-col">
@@ -588,12 +790,14 @@ function App() {
                 </div>
                 <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
                   {suggestions.map((s, i) => {
+                    const accepted = acceptedIds.has(s.id)
+                    const canAccept = s.location !== null
                     const sectionCls = SECTION_COLORS[s.section] ?? SECTION_COLORS["Other"]
                     const { icon: ImpactIcon, cls: impactCls } = IMPACT_CONFIG[s.impact]
                     return (
                       <div
                         key={s.id}
-                        className={`suggestion-card rounded-xl border p-3 slide-in ${s.accepted ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e2e8f0] bg-white"}`}
+                        className={`suggestion-card rounded-xl border p-3 slide-in ${accepted ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e2e8f0] bg-white"}`}
                         style={{ animationDelay: `${i * 40}ms` }}
                       >
                         <div className="flex items-center justify-between mb-2 gap-1">
@@ -604,10 +808,23 @@ function App() {
                             </span>
                           </div>
                           <button
-                            onClick={() => toggleSuggestion(s.id)}
-                            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium transition-all flex-shrink-0 ${poppingId === s.id ? "pop" : ""} ${s.accepted ? "bg-[#6366f1] text-white" : "border border-[#e2e8f0] text-[#6366f1] hover:border-[#6366f1] hover:bg-[#eef2ff]"}`}
+                            onClick={() => canAccept && toggleSuggestion(s.id)}
+                            disabled={!canAccept}
+                            title={!canAccept ? "Could not locate this text in your resume — edit manually" : undefined}
+                            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium transition-all flex-shrink-0 ${poppingId === s.id ? "pop" : ""} ${
+                              !canAccept
+                                ? "opacity-40 cursor-not-allowed border border-[#e2e8f0] text-[#94a3b8]"
+                                : accepted
+                                  ? "bg-[#6366f1] text-white"
+                                  : "border border-[#e2e8f0] text-[#6366f1] hover:border-[#6366f1] hover:bg-[#eef2ff]"
+                            }`}
                           >
-                            {s.accepted ? <><CheckCircle size={9} />Accepted</> : <><ThumbsUp size={9} />Accept</>}
+                            {accepted
+                              ? <><CheckCircle size={9} />Accepted</>
+                              : !canAccept
+                                ? <>Manual edit</>
+                                : <><ThumbsUp size={9} />Accept</>
+                            }
                           </button>
                         </div>
 

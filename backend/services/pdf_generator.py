@@ -67,35 +67,6 @@ def _apply_spacing_fixes(data: dict) -> dict:
     return data
 
 
-def _apply_suggestions(data: dict, suggestions: list) -> dict:
-    """Apply accepted suggestion texts to resume data fields."""
-    data = copy.deepcopy(data)
-    for s in suggestions:
-        orig = s.original if hasattr(s, 'original') else s.get('original', '')
-        sugg = s.suggested if hasattr(s, 'suggested') else s.get('suggested', '')
-        section = s.section if hasattr(s, 'section') else s.get('section', '')
-        if not orig:
-            continue
-
-        def sub(text: str) -> str:
-            return text.replace(orig, sugg) if orig in text else text
-
-        if section == 'Summary':
-            data['summary'] = sub(data.get('summary', ''))
-        elif section == 'Skills':
-            data['skills'] = sub(data.get('skills', ''))
-        elif section == 'Experience':
-            for exp in data.get('experience', []):
-                exp['title'] = sub(exp.get('title', ''))
-                exp['company'] = sub(exp.get('company', ''))
-                exp['bullets'] = [sub(b) for b in exp.get('bullets', [])]
-        elif section == 'Education':
-            for edu in data.get('education', []):
-                edu['school'] = sub(edu.get('school', ''))
-                edu['degree'] = sub(edu.get('degree', ''))
-
-    return data
-
 
 def build_resume_html(data: dict) -> str:
     """Build a professional HTML resume from structured resume data."""
@@ -316,9 +287,8 @@ def build_resume_html(data: dict) -> str:
 </html>"""
 
 
-def generate_pdf(resume_data: dict, accepted_suggestions: list) -> bytes:
+def generate_pdf(resume_data: dict) -> bytes:
     """Generate PDF from structured resume data using WeasyPrint."""
-    data = _apply_suggestions(resume_data, accepted_suggestions)
-    data = _apply_spacing_fixes(data)
+    data = _apply_spacing_fixes(resume_data)
     html_str = build_resume_html(data)
     return HTML(string=html_str).write_pdf()

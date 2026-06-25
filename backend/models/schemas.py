@@ -2,14 +2,22 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class SuggestionLocation(BaseModel):
+    kind: Literal["flat", "experience", "projects", "education"]
+    field: str
+    index: int | None = None
+    bullet_index: int | None = None
+
+
 class Suggestion(BaseModel):
     id: str
-    section: Literal["Summary", "Experience", "Skills", "Education", "Other"]
+    section: Literal["Summary", "Experience", "Skills", "Education", "Projects", "Other"]
     original: str
     suggested: str
     reason: str
     impact: Literal["high", "medium", "low"]
     accepted: bool = False
+    location: SuggestionLocation | None = None
 
 
 class ExperienceEntry(BaseModel):
