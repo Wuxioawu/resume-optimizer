@@ -14,7 +14,7 @@ export async function analyzeResume(
   try {
     const { data } = await axios.post<AnalyzeResponse>(`${BASE_URL}/api/analyze`, form, {
       headers: { "Content-Type": "multipart/form-data" },
-      timeout: 180_000,
+      timeout: 300_000,
     })
     return data
   } catch (err) {
