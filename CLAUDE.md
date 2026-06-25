@@ -2,27 +2,27 @@
 
 ## Project Overview
 An AI-powered resume optimization tool. Users upload a Job Description and their existing resume (PDF format).
-The system uses the Claude API to analyze the match, generates structured modification suggestions,
-allows users to accept or reject each suggestion individually, and exports a final editable PDF.
+The system uses the OpenRouter API to analyze the match, generates structured modification suggestions,
+allows users to accept or reject each suggestion individually, and exports a final PDF.
 
 ---
 
 ## Tech Stack
 
 ### Frontend
-- React 18 + TypeScript
+- React 19 + TypeScript
 - Tailwind CSS (styling)
-- PDF.js (PDF preview)
-- pdf-lib (PDF editing/export)
 - Axios (API requests)
+- lucide-react (icons)
+- Note: `pdf-lib` and `pdfjs-dist` appear in package.json but are not imported anywhere in the source — the live preview and PDF export are handled entirely server-side and via a custom React component.
 
 ### Backend
-- Python 3.11 + FastAPI
+- Python 3.12 + FastAPI
 - pdfplumber (PDF text extraction)
-- reportlab (PDF generation)
-- PyMuPDF / fitz (PDF editing)
-- Google Gemini API (gemini-1.5-flash) — FREE
+- WeasyPrint (HTML-to-PDF generation)
+- OpenRouter API (free-tier multi-model fallback chain)
 - python-multipart (file uploads)
+- Note: `reportlab` and `PyMuPDF` remain in requirements.txt but are unused in the current code.
 
 ### Dev Tools
 - Node.js 20+
@@ -35,34 +35,32 @@ allows users to accept or reject each suggestion individually, and exports a fin
 
 ```
 resume-optimizer/
-├── CLAUDE.md                        # This file
+├── CLAUDE.md                          # This file
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── UploadPanel.tsx      # File upload area
-│   │   │   ├── SuggestionPanel.tsx  # Suggestions list panel
-│   │   │   ├── PDFViewer.tsx        # PDF preview component
-│   │   │   └── ExportButton.tsx     # Export to PDF button
+│   │   ├── App.tsx                    # Entire UI — upload, editor, preview, suggestions
 │   │   ├── api/
-│   │   │   └── resumeApi.ts         # API call functions
-│   │   ├── types/
-│   │   │   └── index.ts             # TypeScript type definitions
-│   │   └── App.tsx
+│   │   │   └── resumeApi.ts           # analyzeResume() and exportResume() API calls
+│   │   └── types/
+│   │       └── index.ts               # TypeScript type definitions
 │   └── package.json
 ├── backend/
-│   ├── main.py                      # FastAPI entry point
+│   ├── main.py                        # FastAPI entry point + CORS config
 │   ├── routers/
-│   │   └── resume.py                # Resume-related routes
+│   │   └── resume.py                  # /api/analyze and /api/export routes
 │   ├── services/
-│   │   ├── pdf_parser.py            # PDF parsing service
-│   │   ├── gemini_service.py        # Gemini API service
-│   │   └── pdf_generator.py         # PDF generation service
+│   │   ├── pdf_parser.py              # pdfplumber text extraction
+│   │   ├── openrouter_service.py      # OpenRouter API + resume analysis prompt
+│   │   ├── resume_parser.py           # OpenRouter API + resume structure parsing
+│   │   └── pdf_generator.py           # HTML→PDF via WeasyPrint
 │   ├── models/
-│   │   └── schemas.py               # Pydantic data models
+│   │   └── schemas.py                 # Pydantic models (Suggestion, ResumeData, etc.)
 │   └── requirements.txt
-├── uploads/                         # Temp uploaded files (excluded from git)
-└── outputs/                         # Generated resumes (excluded from git)
+├── uploads/                           # Temp uploaded files (excluded from git)
+└── outputs/                           # Generated resumes (excluded from git)
 ```
+
+There is no `frontend/src/components/` directory. All UI (upload panel, live preview, inline editor, suggestions panel, export button) lives directly in `App.tsx`.
 
 ---
 
@@ -71,28 +69,50 @@ resume-optimizer/
 ```
 User uploads PDF resume + Job Description text
               ↓
-Backend: pdfplumber extracts resume text
+Backend: pdfplumber extracts raw resume text
               ↓
-Backend: calls Gemini API for analysis
+Backend (resume_parser.py): OpenRouter call parses raw text → structured ResumeData
               ↓
-Gemini returns structured suggestions (JSON format)
-Each suggestion contains:
-  - section:   which part to modify (e.g. "Work Experience")
-  - original:  original text
-  - suggested: recommended replacement text
-  - reason:    why this change improves the resume
-  - impact:    expected impact level (high / medium / low)
+Backend (openrouter_service.py): OpenRouter call generates improvement suggestions
               ↓
-Frontend: shows original PDF preview + suggestion list side by side
+Both results returned to frontend in a single AnalyzeResponse
               ↓
-User clicks "Accept ✅" or "Reject ❌" for each suggestion
+Frontend: three-panel layout —
+  Left (40%):  Live preview (custom ResumePreview component in App.tsx)
+  Middle (30%): Inline editor (Personal / Experience / Projects / Education / Skills tabs)
+  Right (30%): AI suggestions list
+              ↓
+User clicks "Accept" / toggles each suggestion — preview updates instantly in-browser
+User may also manually edit fields in the editor
               ↓
 User clicks "Export PDF"
               ↓
-Backend: merges accepted suggestions and generates new PDF
+Backend: applies accepted suggestions to ResumeData, renders HTML, WeasyPrint → PDF
               ↓
-User downloads the final editable PDF
+User downloads optimized_resume.pdf
 ```
+
+---
+
+## OpenRouter API Setup
+
+The backend uses OpenRouter's free-tier endpoint with a sequential model fallback chain.
+Both `openrouter_service.py` (analysis) and `resume_parser.py` (structure parsing) share the same
+model list and try each model in order until one returns a valid response:
+
+```python
+MODELS = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-20b:free",
+    "z-ai/glm-4.5-air:free",
+    "google/gemma-4-31b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "minimax/minimax-m2.5:free",
+]
+```
+
+All calls go to `https://openrouter.ai/api/v1/chat/completions` with a 120 s timeout per model.
+If every model fails, the endpoint raises HTTP 502.
 
 ---
 
@@ -101,74 +121,48 @@ User downloads the final editable PDF
 ```
 POST /api/analyze
   Request:  FormData { resume: File, job_description: string }
-  Response: { suggestions: Suggestion[], resume_text: string, match_score: number }
+  Response: {
+    suggestions:   Suggestion[],
+    resume_text:   string,          # raw extracted text
+    match_score:   number,          # 0–100
+    temp_file_id:  string,          # UUID, for reference only
+    parsed_resume: ResumeData       # structured resume data
+  }
 
 POST /api/export
-  Request:  { resume_text: string, accepted_suggestions: Suggestion[] }
-  Response: PDF file (blob)
+  Request:  {
+    parsed_resume:        ResumeData,
+    accepted_suggestions: Suggestion[]   # full list; only accepted: true entries are applied
+  }
+  Response: PDF file (blob), filename = optimized_resume.pdf
 ```
 
-### Suggestion Data Structure
+### Core Data Structures
+
 ```typescript
 interface Suggestion {
-  id: string
-  section: "Summary" | "Experience" | "Skills" | "Education" | "Other"
-  original: string       // Original text from resume
-  suggested: string      // AI-recommended replacement
-  reason: string         // Why this change helps
-  impact: "high" | "medium" | "low"
-  accepted: boolean      // Whether the user accepted this suggestion
+  id:        string
+  section:   "Summary" | "Experience" | "Skills" | "Education" | "Other"
+  original:  string        // exact text copied from resume
+  suggested: string        // AI-recommended replacement
+  reason:    string        // why this change helps
+  impact:    "high" | "medium" | "low"
+  accepted:  boolean
 }
-```
 
----
+interface ResumeData {
+  name:       string
+  contact:    string
+  summary:    string
+  experience: ExperienceEntry[]
+  projects:   ProjectEntry[]
+  education:  EducationEntry[]
+  skills:     string
+}
 
-## Gemini API Prompt Template
-
-Use the following prompt when calling `google-generativeai` to analyze resumes:
-
-```python
-import google.generativeai as genai
-
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-prompt = f"""You are a professional resume optimization consultant specializing in matching
-resumes to job descriptions for English-speaking markets.
-
-Analyze the candidate's resume against the provided job description and return
-specific, actionable improvement suggestions.
-
-Rules:
-1. Return ONLY valid JSON — no extra text, no markdown code fences
-2. Every suggestion must include the exact original text and the recommended replacement
-3. Tailor suggestions to keywords and requirements in the JD
-4. Provide a maximum of 10 suggestions, prioritized by impact
-5. Never fabricate experience — only reframe or expand on what already exists
-6. Write all suggested text in professional English
-
-Resume:
-{resume_text}
-
-Job Description:
-{job_description}
-
-Return format:
-{{
-  "match_score": 75,
-  "suggestions": [
-    {{
-      "id": "1",
-      "section": "Skills",
-      "original": "Familiar with AWS",
-      "suggested": "Proficient in AWS services including EC2, S3, VPC, IAM, and CloudFormation",
-      "reason": "The JD requires specific AWS service experience. Listing individual services demonstrates hands-on depth.",
-      "impact": "high"
-    }}
-  ]
-}}"""
-
-response = model.generate_content(prompt)
+interface ExperienceEntry { company: string; title: string; date: string; location: string; bullets: string[] }
+interface ProjectEntry    { name: string; role: string; date: string; bullets: string[] }
+interface EducationEntry  { school: string; degree: string; date: string; location: string }
 ```
 
 ---
@@ -189,9 +183,6 @@ npm run dev
 # Run backend tests
 cd backend && pytest tests/
 
-# Run frontend tests
-cd frontend && npm test
-
 # Build for production
 cd frontend && npm run build
 ```
@@ -202,7 +193,7 @@ cd frontend && npm run build
 
 ```bash
 # backend/.env  (NEVER commit this file!)
-GEMINI_API_KEY=your_api_key_here
+OPENROUTER_API_KEY=your_api_key_here
 MAX_FILE_SIZE_MB=10
 ALLOWED_ORIGINS=http://localhost:5173
 
@@ -216,7 +207,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 - **Python**: Follow PEP8; all functions must have docstrings; full type annotations required
 - **TypeScript**: Strict mode enabled; all variables must be typed
-- **Component naming**: PascalCase (e.g. `SuggestionCard`)
+- **Component naming**: PascalCase (e.g. `ResumePreview`)
 - **API function naming**: camelCase (e.g. `analyzeResume`)
 - **Styling**: Tailwind only — avoid custom CSS unless absolutely necessary
 - **Comments**: English preferred; critical logic must be commented
@@ -227,37 +218,38 @@ VITE_API_BASE_URL=http://localhost:8000
 ## Important Rules
 
 ⚠️  **Never do the following:**
-- Never hard-code the GEMINI_API_KEY anywhere in the codebase
-- Never permanently store user-uploaded files (delete within 1 hour of processing)
-- Never call the Gemini API directly from the frontend (always go through the backend)
+- Never hard-code the OPENROUTER_API_KEY anywhere in the codebase
+- Never permanently store user-uploaded files (delete immediately after text extraction)
+- Never call the OpenRouter API directly from the frontend (always go through the backend)
 - Never modify files inside uploads/ or outputs/ directly (these are user data)
 - Never remove any dependency from requirements.txt without checking all usages
 
 ✅  **After every code change, verify:**
-- Backend API still returns valid JSON matching the Suggestion interface
-- File upload size limit (max 10MB) is enforced
-- PDF export produces a valid, editable PDF file
+- Backend API still returns valid JSON matching the Suggestion and ResumeData interfaces
+- File upload size limit (max 10 MB) is enforced
+- PDF export produces a valid PDF file
 - No API keys are exposed in logs or responses
 
 ---
 
 ## Development Checklist
 
-- [ ] PDF upload and text extraction (backend)
-- [ ] Gemini API integration and suggestion generation
-- [ ] Suggestion display UI (frontend)
-- [ ] Accept / Reject interaction per suggestion
-- [ ] PDF export with accepted changes applied
-- [ ] Error handling and loading states
-- [ ] File cleanup after processing
+- [x] PDF upload and text extraction (backend)
+- [x] OpenRouter API integration and suggestion generation
+- [x] OpenRouter API integration for resume structure parsing
+- [x] Suggestion display UI (frontend)
+- [x] Accept / Reject interaction per suggestion
+- [x] Live preview panel (ResumePreview component)
+- [x] Inline resume editor (tabbed: Personal, Experience, Projects, Education, Skills)
+- [x] PDF export via WeasyPrint
+- [x] Error handling and loading states
+- [x] File cleanup after processing
 
 ---
 
 ## Reference Links
 
-- Gemini API Docs:     https://ai.google.dev/gemini-api/docs
-- google-generativeai: https://pypi.org/project/google-generativeai
-- FastAPI Docs:        https://fastapi.tiangolo.com
-- pdf-lib Docs:        https://pdf-lib.js.org
-- pdfplumber GitHub:   https://github.com/jsvine/pdfplumber
-- PDF.js Docs:         https://mozilla.github.io/pdf.js
+- OpenRouter Docs:    https://openrouter.ai/docs
+- FastAPI Docs:       https://fastapi.tiangolo.com
+- WeasyPrint Docs:    https://doc.courtbouillon.org/weasyprint
+- pdfplumber GitHub:  https://github.com/jsvine/pdfplumber
