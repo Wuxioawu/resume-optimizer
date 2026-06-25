@@ -231,8 +231,16 @@ function App() {
     return () => clearTimeout(t)
   }, [matchScore])
 
+  const MAX_FILE_BYTES = (Number(import.meta.env.VITE_MAX_FILE_SIZE_MB) || 10) * 1024 * 1024
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setResumeFile(e.target.files?.[0] ?? null)
+    const file = e.target.files?.[0] ?? null
+    if (file && file.size > MAX_FILE_BYTES) {
+      setError(`File exceeds the ${MAX_FILE_BYTES / 1024 / 1024} MB limit. Please upload a smaller PDF.`)
+      e.target.value = ""
+      return
+    }
+    setResumeFile(file)
     setError(null)
   }
 

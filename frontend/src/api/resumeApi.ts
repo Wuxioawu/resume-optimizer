@@ -11,10 +11,18 @@ export async function analyzeResume(
   form.append("resume", resume)
   form.append("job_description", jobDescription)
 
-  const { data } = await axios.post<AnalyzeResponse>(`${BASE_URL}/api/analyze`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  })
-  return data
+  try {
+    const { data } = await axios.post<AnalyzeResponse>(`${BASE_URL}/api/analyze`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60_000,
+    })
+    return data
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
+      throw new Error("Analysis timed out. The AI models are busy — please try again in a moment.")
+    }
+    throw err
+  }
 }
 
 export async function exportResume(parsedResume: ResumeData): Promise<Blob> {
