@@ -1,16 +1,8 @@
-import os
 import json
+import os
 import re
-import requests
 
-MODELS = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "openai/gpt-oss-20b:free",
-    "z-ai/glm-4.5-air:free",
-    "google/gemma-4-31b-it:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "minimax/minimax-m2.5:free",
-]
+from services.openrouter_service import call_openrouter
 
 
 def parse_resume(resume_text: str) -> dict:
@@ -70,53 +62,16 @@ Rules:
 Resume text:
 {resume_text}"""
 
-    errors = []
-    print(f"\n[resume_parser] Parsing resume into sections...")
-    print(f"[resume_parser] Resume length: {len(resume_text)} chars")
+    print(f"\n[resume_parser] Parsing resume ({len(resume_text)} chars)...")
+    raw = call_openrouter([{"role": "user", "content": prompt}], api_key)
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
 
-    for index, model in enumerate(MODELS):
-        print(f"[resume_parser] Attempt {index + 1}/{len(MODELS)}: {model}")
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-                timeout=120,
-            )
-
-            print(f"[resume_parser] HTTP status: {response.status_code}")
-            body = response.json()
-
-            if "choices" in body:
-                raw = body["choices"][0]["message"]["content"].strip()
-                raw = re.sub(r"^```(?:json)?\s*", "", raw)
-                raw = re.sub(r"\s*```$", "", raw)
-                result = json.loads(raw.strip())
-                print(f"[resume_parser] ✅ SUCCESS with {model}")
-                print(f"[resume_parser] Name: {result.get('name')}")
-                print(f"[resume_parser] Experience entries: {len(result.get('experience', []))}")
-                print(f"[resume_parser] Projects entries: {len(result.get('projects', []))}")
-                return result
-
-            error = body.get("error", {})
-            code = error.get("code") if isinstance(error, dict) else "unknown"
-            msg = str(error.get("message", ""))[:80] if isinstance(error, dict) else ""
-            print(f"[resume_parser] ❌ FAILED: code={code} msg={msg}")
-            errors.append(f"{model}: code={code}")
-
-        except json.JSONDecodeError as exc:
-            print(f"[resume_parser] ❌ JSON parse error: {exc}")
-            errors.append(f"{model}: json error")
-
-        except Exception as e:
-            print(f"[resume_parser] ❌ Exception: {str(e)}")
-            errors.append(f"{model}: {str(e)}")
-
-    print(f"[resume_parser] ❌ ALL MODELS FAILED: {errors}")
-    raise ValueError(f"All models failed: {'; '.join(errors)}")
+    try:
+        result = json.loads(raw.strip())
+        print(f"[resume_parser] ✅ parsed — name={result.get('name')}, "
+              f"exp={len(result.get('experience', []))}, "
+              f"proj={len(result.get('projects', []))}")
+        return result
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Model returned non-JSON: {exc}") from exc

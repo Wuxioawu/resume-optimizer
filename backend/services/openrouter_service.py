@@ -2,6 +2,7 @@ import os
 import json
 import re
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
@@ -12,59 +13,52 @@ MODELS = [
     "minimax/minimax-m2.5:free",
 ]
 
+_MODEL_TIMEOUT = 30  # seconds per model; racing means we don't need to wait 120s
+
+
+def _try_model(model: str, messages: list[dict], api_key: str) -> str | None:
+    """Send one request. Returns response content on success, None on failure."""
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": model, "messages": messages},
+            timeout=_MODEL_TIMEOUT,
+        )
+        body = response.json()
+        if "choices" in body:
+            return body["choices"][0]["message"]["content"].strip()
+        error = body.get("error", {})
+        print(f"[openrouter] ❌ {model}: {error.get('code')} {str(error.get('message', ''))[:80]}")
+        return None
+    except requests.exceptions.Timeout:
+        print(f"[openrouter] ❌ {model}: timeout after {_MODEL_TIMEOUT}s")
+        return None
+    except Exception as exc:
+        print(f"[openrouter] ❌ {model}: {exc}")
+        return None
+
 
 def call_openrouter(messages: list[dict], api_key: str) -> str:
-    """Try each model in order until one succeeds."""
-    errors = []
-    print(f"\n{'='*50}")
-    print(f"[openrouter] Starting request, trying {len(MODELS)} models...")
-    print(f"{'='*50}")
+    """Fire all models concurrently; return the first successful response."""
+    print(f"[openrouter] Racing {len(MODELS)} models concurrently (timeout={_MODEL_TIMEOUT}s each)...")
 
-    for index, model in enumerate(MODELS):
-        print(f"\n[openrouter] Attempt {index + 1}/{len(MODELS)}: {model}")
-        try:
-            print(f"[openrouter] Sending request...")
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": model, "messages": messages},
-                timeout=120,
-            )
-            print(f"[openrouter] HTTP status: {response.status_code}")
-            body = response.json()
+    with ThreadPoolExecutor(max_workers=len(MODELS)) as executor:
+        futures = {
+            executor.submit(_try_model, model, messages, api_key): model
+            for model in MODELS
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                winner = futures[future]
+                print(f"[openrouter] ✅ Winner: {winner} ({len(result)} chars)")
+                return result
 
-            if "choices" in body:
-                content = body["choices"][0]["message"]["content"].strip()
-                print(f"[openrouter] ✅ SUCCESS with {model}")
-                print(f"[openrouter] Response length: {len(content)} chars")
-                print(f"[openrouter] Response preview: {content[:100]}...")
-                return content
-
-            # Failed - log the error and try next model
-            error = body.get("error", {})
-            error_code = error.get("code", "unknown")
-            error_msg = str(error.get("message", ""))[:100]
-            print(f"[openrouter] ❌ FAILED: code={error_code} msg={error_msg}")
-            print(f"[openrouter] → Switching to next model...")
-            errors.append(f"{model}: code={error_code}")
-
-        except requests.exceptions.Timeout:
-            print(f"[openrouter] ❌ TIMEOUT after 120s for {model}")
-            print(f"[openrouter] → Switching to next model...")
-            errors.append(f"{model}: timeout")
-
-        except Exception as e:
-            print(f"[openrouter] ❌ EXCEPTION for {model}: {str(e)}")
-            print(f"[openrouter] → Switching to next model...")
-            errors.append(f"{model}: {str(e)}")
-
-    print(f"\n[openrouter] ❌ ALL {len(MODELS)} MODELS FAILED")
-    print(f"[openrouter] Errors: {errors}")
-    print(f"{'='*50}\n")
-    raise ValueError(f"All models failed: {'; '.join(errors)}")
+    raise ValueError(f"All {len(MODELS)} models failed or timed out")
 
 
 def rewrite_resume(parsed_dict: dict, instruction: str, job_description: str) -> list[dict]:

@@ -1,3 +1,4 @@
+import asyncio
 import difflib
 import os
 import re
@@ -157,18 +158,27 @@ async def analyze(
 
     temp_path.unlink(missing_ok=True)
 
-    try:
-        result = analyze_resume(resume_text, job_description)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="OpenRouter API request failed") from exc
+    # Run analyze and parse concurrently — they are independent tasks on the same resume_text.
+    loop = asyncio.get_running_loop()
+    analyze_result, parse_result = await asyncio.gather(
+        loop.run_in_executor(None, analyze_resume, resume_text, job_description),
+        loop.run_in_executor(None, parse_resume, resume_text),
+        return_exceptions=True,
+    )
 
-    try:
-        parsed_dict = parse_resume(resume_text)
-    except Exception as exc:
-        print(f"[analyze] ⚠️ resume_parser failed — falling back to empty resume: {exc}")
-        parsed_dict = {}
+    if isinstance(analyze_result, ValueError):
+        raise HTTPException(status_code=502, detail=str(analyze_result))
+    if isinstance(analyze_result, Exception):
+        raise HTTPException(status_code=502, detail="OpenRouter API request failed")
+    assert isinstance(analyze_result, dict)
+    result: dict = analyze_result
+
+    if isinstance(parse_result, Exception):
+        print(f"[analyze] ⚠️ resume_parser failed — falling back to empty resume: {parse_result}")
+        parsed_dict: dict = {}
+    else:
+        assert isinstance(parse_result, dict)
+        parsed_dict = parse_result
 
     try:
         parsed_resume = ResumeData(**parsed_dict)
