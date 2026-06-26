@@ -1,49 +1,24 @@
 import React, { useState, useRef, useEffect } from "react"
-import type { LucideIcon } from "lucide-react"
 import {
   Sparkles, FileText, Zap, Target, TrendingUp,
   Upload, CheckCircle, Briefcase, Loader2, Award, CheckSquare,
-  CheckCheck, X, Download, Lightbulb, Flame, Minus, ArrowRight,
-  Info, ThumbsUp, Heart, User, GraduationCap, FolderOpen,
-  Wrench, Plus, Trash2, Edit3, Palette,
+  CheckCheck, X, Download, Lightbulb, Heart, Edit3, Palette,
 } from "lucide-react"
 import { analyzeResume, exportResume, rewriteResume } from "./api/resumeApi"
 import type {
-  Suggestion, SuggestionLocation, ResumeData, ExperienceEntry, ProjectEntry, EducationEntry, ResumeStyle,
+  Suggestion, SuggestionLocation, ResumeData, ResumeStyle,
 } from "./types"
 import ResumePreview from "./components/ResumePreview"
 import StylePanel from "./components/StylePanel"
+import EditorPanel from "./components/EditorPanel"
+import SuggestionsPanel from "./components/SuggestionsPanel"
 
 type AppState = "idle" | "loading" | "results" | "exporting"
-type EditorTab = "personal" | "experience" | "projects" | "education" | "skills"
 type RightTab = "editor" | "suggestions" | "style"
 
 const DEFAULT_STYLE: ResumeStyle = { accentColor: "#0f172a", headerAlignment: "center", sectionSpacing: 8, entrySpacing: 6, lineSpacing: 1.4 }
 
 const CIRCUMFERENCE = 2 * Math.PI * 45
-
-const SECTION_COLORS: Record<string, string> = {
-  Summary:    "bg-[#eef2ff] text-[#4f46e5] border-[#c7d2fe]",
-  Experience: "bg-[#f5f3ff] text-[#7c3aed] border-[#ddd6fe]",
-  Skills:     "bg-[#f0f9ff] text-[#0284c7] border-[#bae6fd]",
-  Education:  "bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]",
-  Projects:   "bg-[#fff7ed] text-[#c2410c] border-[#fed7aa]",
-  Other:      "bg-[#f8fafc] text-[#64748b] border-[#e2e8f0]",
-}
-
-const IMPACT_CONFIG: Record<Suggestion["impact"], { icon: LucideIcon; cls: string }> = {
-  high:   { icon: Flame, cls: "text-[#dc2626] bg-[#fef2f2] border-[#fecaca]" },
-  medium: { icon: Zap,   cls: "text-[#d97706] bg-[#fffbeb] border-[#fde68a]" },
-  low:    { icon: Minus, cls: "text-[#16a34a] bg-[#f0fdf4] border-[#bbf7d0]" },
-}
-
-const EDITOR_TABS: { id: EditorTab; label: string; icon: LucideIcon }[] = [
-  { id: "personal",   label: "Personal",   icon: User },
-  { id: "experience", label: "Experience", icon: Briefcase },
-  { id: "projects",   label: "Projects",   icon: FolderOpen },
-  { id: "education",  label: "Education",  icon: GraduationCap },
-  { id: "skills",     label: "Skills",     icon: Wrench },
-]
 
 // ── Location helpers ──────────────────────────────────────────────────────────
 
@@ -153,192 +128,11 @@ function writeFieldAt(r: ResumeData, loc: SuggestionLocation, value: string): Re
   return r
 }
 
-const inputCls = "w-full bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-3 py-1.5 text-xs text-[#0f172a] placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1]/50 focus:ring-1 focus:ring-[#6366f1]/15 transition-all"
-
 // ── Resizable split ───────────────────────────────────────────────────────────
 
 const SPLIT_KEY = "resume-split-px"
 const MIN_LEFT_PX = 360
 const MIN_RIGHT_PX = 380
-
-// ── EditorPanel ───────────────────────────────────────────────────────────────
-
-interface EditorPanelProps {
-  resume: ResumeData
-  setResume: (updater: (r: ResumeData) => ResumeData) => void
-}
-
-function EditorPanel({ resume, setResume }: EditorPanelProps) {
-  const [activeTab, setActiveTab] = useState<EditorTab>("personal")
-
-  const updateExp = (i: number, updates: Partial<ExperienceEntry>) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, ...updates } : e) }))
-
-  const setExpBullet = (ei: number, bi: number, val: string) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.map((b, j) => j === bi ? val : b) } : e) }))
-
-  const addExpBullet = (i: number) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, j) => j === i ? { ...e, bullets: [...e.bullets, ""] } : e) }))
-
-  const removeExpBullet = (ei: number, bi: number) =>
-    setResume(r => ({ ...r, experience: r.experience.map((e, i) => i === ei ? { ...e, bullets: e.bullets.filter((_, j) => j !== bi) } : e) }))
-
-  const addExp = () =>
-    setResume(r => ({ ...r, experience: [...r.experience, { company: "", title: "", date: "", location: "", bullets: [] }] }))
-
-  const removeExp = (i: number) =>
-    setResume(r => ({ ...r, experience: r.experience.filter((_, j) => j !== i) }))
-
-  const updateProj = (i: number, updates: Partial<ProjectEntry>) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, ...updates } : p) }))
-
-  const setProjBullet = (pi: number, bi: number, val: string) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.map((b, j) => j === bi ? val : b) } : p) }))
-
-  const addProjBullet = (i: number) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, j) => j === i ? { ...p, bullets: [...p.bullets, ""] } : p) }))
-
-  const removeProjBullet = (pi: number, bi: number) =>
-    setResume(r => ({ ...r, projects: r.projects.map((p, i) => i === pi ? { ...p, bullets: p.bullets.filter((_, j) => j !== bi) } : p) }))
-
-  const addProj = () =>
-    setResume(r => ({ ...r, projects: [...r.projects, { name: "", role: "", date: "", bullets: [] }] }))
-
-  const removeProj = (i: number) =>
-    setResume(r => ({ ...r, projects: r.projects.filter((_, j) => j !== i) }))
-
-  const updateEdu = (i: number, updates: Partial<EducationEntry>) =>
-    setResume(r => ({ ...r, education: r.education.map((e, j) => j === i ? { ...e, ...updates } : e) }))
-
-  const addEdu = () =>
-    setResume(r => ({ ...r, education: [...r.education, { school: "", degree: "", date: "", location: "" }] }))
-
-  const removeEdu = (i: number) =>
-    setResume(r => ({ ...r, education: r.education.filter((_, j) => j !== i) }))
-
-  return (
-    <>
-      <div className="flex gap-0.5 bg-[#f1f5f9] rounded-xl p-1 mb-2 flex-shrink-0">
-        {EDITOR_TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[9px] font-medium transition-all ${activeTab === tab.id ? "bg-white text-[#6366f1] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]"}`}
-          >
-            <tab.icon size={11} />{tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === "personal" && (
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Full Name</label>
-            <input value={resume.name} onChange={e => setResume(r => ({ ...r, name: e.target.value }))} className={inputCls} placeholder="Full Name" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Contact</label>
-            <input value={resume.contact} onChange={e => setResume(r => ({ ...r, contact: e.target.value }))} className={inputCls} placeholder="email | phone | city, state" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1">Summary</label>
-            <textarea value={resume.summary} onChange={e => setResume(r => ({ ...r, summary: e.target.value }))} rows={7} className={`${inputCls} resize-none`} placeholder="Professional summary…" />
-          </div>
-        </div>
-      )}
-
-      {activeTab === "experience" && (
-        <div className="flex flex-col gap-3">
-          {resume.experience.map((exp, i) => (
-            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-              <button onClick={() => removeExp(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Title</label><input value={exp.title} onChange={e => updateExp(i, { title: e.target.value })} className={inputCls} placeholder="Job Title" /></div>
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Company</label><input value={exp.company} onChange={e => updateExp(i, { company: e.target.value })} className={inputCls} placeholder="Company" /></div>
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={exp.date} onChange={e => updateExp(i, { date: e.target.value })} className={inputCls} placeholder="Jan 2020 – Dec 2022" /></div>
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={exp.location} onChange={e => updateExp(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
-              </div>
-              <div>
-                <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
-                {exp.bullets.map((b, bi) => (
-                  <div key={bi} className="flex gap-1 mb-1">
-                    <input value={b} onChange={e => setExpBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="Achievement…" />
-                    <button onClick={() => removeExpBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
-                  </div>
-                ))}
-                <button onClick={() => addExpBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
-              </div>
-            </div>
-          ))}
-          <button onClick={addExp} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-            <Plus size={12} />Add Experience
-          </button>
-        </div>
-      )}
-
-      {activeTab === "projects" && (
-        <div className="flex flex-col gap-3">
-          {resume.projects.map((proj, i) => (
-            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-              <button onClick={() => removeProj(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Name</label><input value={proj.name} onChange={e => updateProj(i, { name: e.target.value })} className={inputCls} placeholder="Project Name" /></div>
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={proj.date} onChange={e => updateProj(i, { date: e.target.value })} className={inputCls} placeholder="2023" /></div>
-              </div>
-              <div><label className="block text-[9px] text-[#64748b] mb-0.5">Role / Tech Stack</label><input value={proj.role} onChange={e => updateProj(i, { role: e.target.value })} className={inputCls} placeholder="React, Node.js…" /></div>
-              <div>
-                <label className="block text-[9px] text-[#64748b] mb-1">Bullets</label>
-                {proj.bullets.map((b, bi) => (
-                  <div key={bi} className="flex gap-1 mb-1">
-                    <input value={b} onChange={e => setProjBullet(i, bi, e.target.value)} className={`${inputCls} flex-1`} placeholder="What it does…" />
-                    <button onClick={() => removeProjBullet(i, bi)} className="text-[#94a3b8] hover:text-[#dc2626] px-1 transition-colors"><X size={10} /></button>
-                  </div>
-                ))}
-                <button onClick={() => addProjBullet(i)} className="flex items-center gap-1 text-[10px] text-[#6366f1] hover:text-[#4f46e5] mt-0.5"><Plus size={10} />Add bullet</button>
-              </div>
-            </div>
-          ))}
-          <button onClick={addProj} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-            <Plus size={12} />Add Project
-          </button>
-        </div>
-      )}
-
-      {activeTab === "education" && (
-        <div className="flex flex-col gap-3">
-          {resume.education.map((edu, i) => (
-            <div key={i} className="border border-[#e2e8f0] rounded-xl p-3 flex flex-col gap-2 relative">
-              <button onClick={() => removeEdu(i)} className="absolute top-2 right-2 text-[#94a3b8] hover:text-[#dc2626] transition-colors"><Trash2 size={11} /></button>
-              <div><label className="block text-[9px] text-[#64748b] mb-0.5">School</label><input value={edu.school} onChange={e => updateEdu(i, { school: e.target.value })} className={inputCls} placeholder="University Name" /></div>
-              <div><label className="block text-[9px] text-[#64748b] mb-0.5">Degree</label><input value={edu.degree} onChange={e => updateEdu(i, { degree: e.target.value })} className={inputCls} placeholder="BS Computer Science" /></div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Date</label><input value={edu.date} onChange={e => updateEdu(i, { date: e.target.value })} className={inputCls} placeholder="May 2021" /></div>
-                <div><label className="block text-[9px] text-[#64748b] mb-0.5">Location</label><input value={edu.location} onChange={e => updateEdu(i, { location: e.target.value })} className={inputCls} placeholder="City, State" /></div>
-              </div>
-            </div>
-          ))}
-          <button onClick={addEdu} className="flex items-center justify-center gap-1.5 w-full py-2 border-2 border-dashed border-[#e2e8f0] rounded-xl text-xs text-[#6366f1] hover:border-[#6366f1]/40 hover:bg-[#eef2ff] transition-all">
-            <Plus size={12} />Add Education
-          </button>
-        </div>
-      )}
-
-      {activeTab === "skills" && (
-        <div>
-          <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Skills</label>
-          <textarea
-            value={resume.skills}
-            onChange={e => setResume(r => ({ ...r, skills: e.target.value }))}
-            rows={12}
-            className={`${inputCls} resize-none`}
-            placeholder="Python, React, AWS, Docker — or comma-separated categories"
-          />
-          <p className="text-[10px] text-[#94a3b8] mt-1">Separate skills with commas, or group by category</p>
-        </div>
-      )}
-    </>
-  )
-}
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -876,94 +670,16 @@ function App() {
 
                 {/* Suggestions tab */}
                 {rightTab === "suggestions" && (
-                  <div className="flex-1 flex flex-col gap-2 min-h-0">
-
-                    {/* AI Rewrite box */}
-                    <div className="bg-white rounded-xl border border-[#e2e8f0] p-3 flex-shrink-0">
-                      <label className="block text-[10px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">
-                        AI Rewrite
-                      </label>
-                      <textarea
-                        value={rewriteInstruction}
-                        onChange={e => setRewriteInstruction(e.target.value)}
-                        rows={2}
-                        placeholder="e.g. use stronger action verbs, shorten my summary…"
-                        className={`${inputCls} resize-none mb-2`}
-                        disabled={isRewriting}
-                      />
-                      <button
-                        onClick={handleRewrite}
-                        disabled={!rewriteInstruction.trim() || isRewriting}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                        style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-                      >
-                        {isRewriting
-                          ? <><Loader2 size={11} className="animate-spin" />Rewriting…</>
-                          : <><Sparkles size={11} />Rewrite</>
-                        }
-                      </button>
-                    </div>
-
-                    {/* Suggestion cards */}
-                    <div className="flex-1 overflow-y-auto flex flex-col gap-2 styled-scroll">
-                    {suggestions.map((s, i) => {
-                      const accepted = acceptedIds.has(s.id)
-                      const canAccept = s.location !== null
-                      const sectionCls = SECTION_COLORS[s.section] ?? SECTION_COLORS["Other"]
-                      const { icon: ImpactIcon, cls: impactCls } = IMPACT_CONFIG[s.impact]
-                      return (
-                        <div
-                          key={s.id}
-                          className={`suggestion-card rounded-xl border p-3 slide-in ${accepted ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e2e8f0] bg-white"}`}
-                          style={{ animationDelay: `${i * 40}ms` }}
-                        >
-                          <div className="flex items-center justify-between mb-2 gap-1">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${sectionCls}`}>{s.section}</span>
-                              <span className={`flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${impactCls}`}>
-                                <ImpactIcon size={8} />{s.impact}
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => canAccept && toggleSuggestion(s.id)}
-                              disabled={!canAccept}
-                              title={!canAccept ? "Could not locate this text in your resume — edit manually" : undefined}
-                              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium transition-all flex-shrink-0 ${poppingId === s.id ? "pop" : ""} ${
-                                !canAccept
-                                  ? "opacity-40 cursor-not-allowed border border-[#e2e8f0] text-[#94a3b8]"
-                                  : accepted
-                                    ? "bg-[#6366f1] text-white"
-                                    : "border border-[#e2e8f0] text-[#6366f1] hover:border-[#6366f1] hover:bg-[#eef2ff]"
-                              }`}
-                            >
-                              {accepted
-                                ? <><CheckCircle size={9} />Accepted</>
-                                : !canAccept
-                                  ? <>Manual edit</>
-                                  : <><ThumbsUp size={9} />Accept</>
-                              }
-                            </button>
-                          </div>
-
-                          <div className="mb-1.5">
-                            <p className="text-[9px] text-[#dc2626]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><ArrowRight size={7} />Original</p>
-                            <p className="text-[10px] text-[#64748b] bg-[#fef2f2] border border-[#fecaca]/60 rounded-lg px-2 py-1.5 leading-relaxed">{s.original}</p>
-                          </div>
-
-                          <div className="mb-1.5">
-                            <p className="text-[9px] text-[#16a34a]/60 uppercase tracking-widest mb-0.5 flex items-center gap-0.5"><Sparkles size={7} />Suggested</p>
-                            <p className="text-[10px] text-[#166534] bg-[#f0fdf4] border border-[#bbf7d0]/60 rounded-lg px-2 py-1.5 leading-relaxed font-medium">{s.suggested}</p>
-                          </div>
-
-                          <div className="flex items-start gap-1 text-[9px] text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-2 py-1.5">
-                            <Info size={9} className="mt-0.5 flex-shrink-0 text-[#6366f1]" />
-                            <span className="leading-relaxed">{s.reason}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    </div>
-                  </div>
+                  <SuggestionsPanel
+                    suggestions={suggestions}
+                    acceptedIds={acceptedIds}
+                    poppingId={poppingId}
+                    rewriteInstruction={rewriteInstruction}
+                    isRewriting={isRewriting}
+                    onToggle={toggleSuggestion}
+                    onRewrite={handleRewrite}
+                    onRewriteInstructionChange={setRewriteInstruction}
+                  />
                 )}
 
                 {/* Style tab */}
